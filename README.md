@@ -18,7 +18,3 @@ Dotted curved roads, a river, soft colour washes, large italic labels for the ma
 
 ## Storage
 Settings are saved in the browser (`localStorage` key `waymark.v2`).
-
-## Next steps
-- Dark theme
-- The guided tour from v1
