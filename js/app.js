@@ -1,4 +1,3 @@
-/* Waymark UI — renders both examples from the single engine in engine.js */
 const $ = s => document.querySelector(s);
 const TIERC = { public: 'var(--pub)', contracted: 'var(--con)', private: 'var(--pri)' };
 const sx = x => 30 + x * 7, sy = y => 30 + y * 7;
@@ -13,8 +12,8 @@ const toast = t => { const el = $('#toast'); el.textContent = t; el.hidden = fal
 const copy = t => navigator.clipboard.writeText(t).then(() => toast('Copied'), () => { const a = document.createElement('textarea'); a.value = t; document.body.appendChild(a); a.select(); document.execCommand('copy'); a.remove(); toast('Copied'); });
 
 const STAGES = [
-  ['#E8613C', 'Demand', 'patients / arrivals'], ['#EFAE2B', 'Capacity', 'slots · servers'], ['#3D8BD9', 'Queue', 'G/G/c wait'],
-  ['#1C9C97', 'Gate · Risk', 'feasible? RPN*'], ['#7B6CF0', 'Score', 'Σ w·s'], ['#E2558A', 'Decision', 'route · fix plan']
+  ['#D4704E', 'Demand', 'patients / arrivals'], ['#CFA24F', 'Capacity', 'slots · servers'], ['#618BB0', 'Queue', 'G/G/c wait'],
+  ['#4F978F', 'Gate · Risk', 'feasible? RPN*'], ['#857DBE', 'Score', 'Σ w·s'], ['#C27C93', 'Decision', 'route · fix plan']
 ];
 function pipe(vals) {
   $('#pipe').innerHTML = STAGES.map((s, i) => `<div style="--c:${s[0]}">${i + 1} ${s[1]}<small>${vals ? vals[i] : s[2]}</small></div>`).join('');
@@ -30,8 +29,25 @@ function presets(el, P, target, after) {
   return mark;
 }
 
-/* ---------------- Example 1: referral ---------------- */
-let rMark;
+const svgPt = e => { const sv = $('#map'), pt = sv.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY; return pt.matrixTransform(sv.getScreenCTM().inverse()); };
+function curve(a, b, bend) {
+  const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2, dx = b.x - a.x, dy = b.y - a.y, cx = mx - dy * bend, cy = my + dx * bend;
+  return `M${a.x.toFixed(1)} ${a.y.toFixed(1)}Q${cx.toFixed(1)} ${cy.toFixed(1)} ${b.x.toFixed(1)} ${b.y.toFixed(1)}`;
+}
+let STATIC = '';
+function mapStatic() {
+  const P = W.PLACES.map(p => ({ x: sx(p[1]), y: sy(p[2]) }));
+  const roads = W.ROADS.map(([a, b], i) => `<path class="road" d="${curve(P[a], P[b], (i % 2 ? 1 : -1) * .07)}"/>`).join('');
+  const towns = W.PLACES.map((p, i) => p[3]
+    ? `<text class="wm" x="${P[i].x}" y="${P[i].y + 42}">${p[0]}</text><circle class="sdot" cx="${P[i].x}" cy="${P[i].y}" r="4"/>`
+    : `<circle class="sdot" cx="${P[i].x}" cy="${P[i].y}" r="2.4"/><text class="stl" x="${P[i].x}" y="${P[i].y + 30}">${p[0]}</text>`).join('');
+  const glow = (x, y, r, c, o) => `<circle cx="${sx(x)}" cy="${sy(y)}" r="${r}" fill="url(#g${c})" opacity="${o}"/>`;
+  STATIC = `<defs><radialGradient id="gA"><stop offset="0" stop-color="#4F978F" stop-opacity=".14"/><stop offset="1" stop-color="#4F978F" stop-opacity="0"/></radialGradient><radialGradient id="gB"><stop offset="0" stop-color="#D4704E" stop-opacity=".12"/><stop offset="1" stop-color="#D4704E" stop-opacity="0"/></radialGradient></defs>` +
+    glow(34, 30, 190, 'A', 1) + glow(92, 22, 170, 'B', 1) + glow(70, 60, 160, 'A', .8) +
+    `<path class="river" d="M-30 170C150 100 250 270 430 240S650 390 720 340 860 440 940 400"/>` + roads + towns;
+}
+let rMark, dragging = false, rq = 0;
+const moveTo = q => { S.p.x = W.clamp((q.x - 30) / 7, 0, 115); S.p.y = W.clamp((q.y - 30) / 7, 0, 76); S.p.name = 'Custom'; if (!rq) rq = requestAnimationFrame(() => { rq = 0; renderRoute(); }); };
 function initRoute() {
   $('#cases').innerHTML = W.CASES.map((c, i) => `<button class="chip" data-i="${i}" title="${c.blurb}">${c.name}</button>`).join('');
   $('#cases').onclick = e => { const i = e.target.dataset.i; if (i == null) return; S.p = { ...W.CASES[i], svc: W.CASES[i].svc.slice() }; renderRoute(); };
@@ -41,7 +57,12 @@ function initRoute() {
   $('#prev').onchange = e => { S.p.prev = e.target.value; renderRoute(); };
   sliders($('#rw'), W.R_TERMS, S.rw, renderRoute);
   rMark = presets($('#rpol'), W.R_POLICIES, S.rw, () => { sliders($('#rw'), W.R_TERMS, S.rw, renderRoute); renderRoute(); });
-  $('#map').onclick = e => { const sv = $('#map'), pt = sv.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY; const q = pt.matrixTransform(sv.getScreenCTM().inverse()); S.p.x = W.clamp((q.x - 30) / 7, 0, 115); S.p.y = W.clamp((q.y - 30) / 7, 0, 76); S.p.name = 'Custom'; renderRoute(); };
+  mapStatic();
+  const sv = $('#map');
+  sv.onpointerdown = e => { if (e.target.closest('.fnode')) return; dragging = true; sv.setPointerCapture(e.pointerId); moveTo(svgPt(e)); };
+  sv.onpointermove = e => dragging && moveTo(svgPt(e));
+  sv.onpointerup = sv.onpointercancel = () => dragging = false;
+  sv.onclick = e => { const n = e.target.closest('.fnode'); if (n) { S.p.prev = S.p.prev === n.dataset.id ? '' : n.dataset.id; renderRoute(); toast(S.p.prev ? 'Continuity set: ' + W.FAC.find(f => f.id === S.p.prev).name : 'Continuity cleared'); } };
 }
 function renderRoute() {
   const p = S.p, R = W.route(p, S.rw);
@@ -50,18 +71,16 @@ function renderRoute() {
   $('#urg').querySelectorAll('button').forEach(b => b.classList.toggle('on', +b.dataset.u === p.urg));
   $('#prev').value = p.prev || ''; rMark();
   const best = R.plan.map(x => x.r.f.id);
-  // map
-  let g = W.ROADS.map(([a, b]) => `<line x1="${sx(W.PLACES[a][1])}" y1="${sy(W.PLACES[a][2])}" x2="${sx(W.PLACES[b][1])}" y2="${sy(W.PLACES[b][2])}" stroke="#E7D8C2" stroke-width="5" stroke-linecap="round"/>`).join('');
-  g += `<circle cx="${sx(p.x)}" cy="${sy(p.y)}" r="${W.RCFG.reach[p.urg] / W.RCFG.road * 7}" fill="#E8613C0d" stroke="#E8613C55" stroke-dasharray="6 6"/>`;
-  g += W.PLACES.map(pl => `<text x="${sx(pl[1])}" y="${sy(pl[2]) + 26}" text-anchor="middle" font-size="${pl[3] ? 13 : 11}" fill="#A49BAE" font-weight="600">${pl[0]}</text>`).join('');
-  R.plan.forEach(x => g += `<line x1="${sx(p.x)}" y1="${sy(p.y)}" x2="${sx(x.r.f.x)}" y2="${sy(x.r.f.y)}" stroke="#2B2238" stroke-width="2.5" stroke-dasharray="2 6" stroke-linecap="round"/>`);
+  const px = sx(p.x), py = sy(p.y), me = { x: px, y: py };
+  let g = STATIC + `<circle class="reach" cx="${px}" cy="${py}" r="${W.RCFG.reach[p.urg] / W.RCFG.road * 7}"/>`;
+  R.plan.forEach((x, i) => { const d = curve(me, { x: sx(x.r.f.x), y: sy(x.r.f.y) }, i % 2 ? .12 : -.12); g += `<path class="edge glow" d="${d}"/><path class="edge best" d="${d}"/>`; });
   R.rows.forEach(r => {
-    const f = r.f, cx = sx(f.x), cy = sy(f.y), on = best.includes(f.id), C = 2 * Math.PI * 13, u = Math.min(1, f.load / f.cap);
-    g += `<g opacity="${r.G || on ? 1 : .35}"><title>${f.name} — ${r.G ? 'score ' + pct(r.total) : r.why}</title><circle cx="${cx}" cy="${cy}" r="13" fill="#fff" stroke="#EADFCF" stroke-width="4"/><circle cx="${cx}" cy="${cy}" r="13" fill="none" stroke="${TIERC[f.tier]}" stroke-width="4" stroke-dasharray="${C * u} ${C}" transform="rotate(-90 ${cx} ${cy})"/><circle cx="${cx}" cy="${cy}" r="${on ? 7 : 5}" fill="${TIERC[f.tier]}"/>${on ? `<circle cx="${cx}" cy="${cy}" r="20" fill="none" stroke="#2B2238" stroke-width="2"/>` : ''}</g>`;
+    const f = r.f, cx = sx(f.x), cy = sy(f.y), on = best.includes(f.id), rr = on ? 15 : 12, C = 2 * Math.PI * rr, u = Math.min(1, f.load / f.cap);
+    g += `<g class="fnode${r.G || on ? '' : ' dim'}" data-id="${f.id}"><title>${f.name} · ${f.tier} — ${r.G ? 'score ' + pct(r.total) : r.why} · ${Math.round(u * 100)}% booked${p.prev === f.id ? ' · known here' : ''}</title><circle r="22" cx="${cx}" cy="${cy}" fill="transparent"/>${on ? `<circle class="selring" cx="${cx}" cy="${cy}" r="${rr + 8}"/>` : ''}<circle class="ring-bg" cx="${cx}" cy="${cy}" r="${rr}"/><circle class="ring" cx="${cx}" cy="${cy}" r="${rr}" stroke="${TIERC[f.tier]}" stroke-dasharray="${(C * u).toFixed(1)} ${C.toFixed(1)}" transform="rotate(-90 ${cx} ${cy})"/><circle class="body" cx="${cx}" cy="${cy}" r="${rr - 4}"/><circle cx="${cx}" cy="${cy}" r="${on ? 5 : 3.5}" fill="${TIERC[f.tier]}"/>${p.prev === f.id ? `<circle cx="${cx + rr - 2}" cy="${cy - rr + 2}" r="4" fill="var(--rose)" stroke="var(--card)" stroke-width="2"/>` : ''}</g>`;
   });
-  g += `<g><circle cx="${sx(p.x)}" cy="${sy(p.y)}" r="11" fill="#E8613C" stroke="#fff" stroke-width="3"/><circle cx="${sx(p.x)}" cy="${sy(p.y)}" r="3" fill="#fff"/></g>`;
+  R.plan.forEach(x => { const f = x.r.f, w = f.name.length * 6.2 + 20, cx = sx(f.x), cy = sy(f.y) - 34; g += `<g class="ftag"><rect x="${cx - w / 2}" y="${cy - 11}" width="${w}" height="21" rx="10.5"/><text x="${cx}" y="${cy + 3.5}">${f.name}</text></g>`; });
+  g += `<g class="patient"><circle class="halo" cx="${px}" cy="${py}" r="12"/><circle class="halo h2" cx="${px}" cy="${py}" r="12"/><circle cx="${px}" cy="${py}" r="11" fill="var(--persimmon)" stroke="var(--card)" stroke-width="3"/><circle cx="${px}" cy="${py}" r="3" fill="var(--card)"/></g>`;
   $('#map').innerHTML = g;
-  // recommendation
   const top = R.plan[0];
   if (!top) $('#rec').innerHTML = `<div class="k">Decision</div><h2>No feasible placement</h2><p>Every facility fails a gate. Widen urgency reach or add capacity.</p>`;
   else {
@@ -70,7 +89,6 @@ function renderRoute() {
     $('#rec').innerHTML = `<div class="k">Decision · ${single ? 'single stop' : 'split plan (' + R.plan.length + ' stops)'}</div><h2 class="serif">${R.plan.map(x => x.r.f.name + (single ? '' : ' <small style="font-size:14px;opacity:.7">(' + x.svc.map(s => W.SERVICES[s][0]).join(', ') + ')</small>')).join(' → ')}</h2>
     <div class="stats"><div><b>${single ? pct(top.r.total) : '—'}</b>score / 100</div><div><b>${Math.round(W.sum(R.plan.map(x => x.r.km)))} km</b>travel</div><div><b>${top.r.waitD < 1 ? Math.round(top.r.waitD * 24) + ' h' : top.r.waitD.toFixed(1) + ' d'}</b>est. queue wait</div><div><b>$${Math.round(W.sum(R.plan.map(x => W.sum(x.svc.map(s => W.SERVICES[s][1])) * x.r.f.m)))}</b>payer cost</div><div><b>${conf}</b>${R.margin != null ? 'margin ' + pct(R.margin) + ' pts' : ''}</div></div>`;
   }
-  // ranking
   const ranked = R.ok.slice(0, 7), out = R.rows.filter(r => !r.G);
   $('#rank').innerHTML = `<h3>Ranking <span>${R.ok.length} feasible of ${R.rows.length}</span></h3>` + (ranked.map((r, i) => `<div class="row ${i === 0 ? 'sel' : ''}"><span class="n">${i + 1}</span><div><b>${r.f.name}</b> <span class="tag" style="--k:${TIERC[r.f.tier]}">${r.f.tier}</span><small>${Math.round(r.km)} km · wait ${r.waitD < 1 ? Math.round(r.waitD * 24) + 'h' : r.waitD.toFixed(1) + 'd'} · ρ ${(r.rho * 100).toFixed(0)}% · Q̂ ${r.qHat.toFixed(2)}</small><div class="stack">${W.R_TERMS.map(t => `<i style="--k:${t[3]};width:${r.part[t[0]] * 100}%" title="${t[1]} ${pct(r.part[t[0]])}"></i>`).join('')}</div></div><span class="sc">${pct(r.total)}</span></div>`).join('') || '<p class="note">None feasible — split plan used.</p>') +
     `<details style="margin-top:8px"><summary class="note" style="cursor:pointer">${out.length} excluded by gates</summary>${out.map(r => `<div class="out"><b>${r.f.name}</b> — ${r.why}</div>`).join('')}</details>`;
@@ -78,7 +96,6 @@ function renderRoute() {
   pipe([`${p.svc.length} need(s), urgency ${['routine', 'soon', 'urgent'][p.urg]}`, `${W.SUMCAP || (W.SUMCAP = W.sum(W.FAC.map(f => f.cap)))} slots/day`, `best wait ${R.ok[0] ? (R.ok[0].waitD * 24).toFixed(0) + ' h' : '—'}`, `${R.ok.length}/${R.rows.length} pass gates`, R.ok[0] ? 'top ' + pct(R.ok[0].total) : 'split', R.plan.map(x => x.r.f.name).join(' → ') || 'none']);
   save();
 }
-/* cohort: same pipeline, loads accumulate as patients are placed (capacity-aware) vs naive nearest */
 let cohortCache = null;
 function renderCohort() {
   const key = JSON.stringify(S.rw); if (cohortCache && cohortCache.key === key) return;
@@ -94,7 +111,6 @@ function renderCohort() {
   cohortCache = { key };
 }
 
-/* ---------------- Example 2: clinic ---------------- */
 let fMark;
 function initClinic() {
   $('#sea').value = S.season;
@@ -104,7 +120,7 @@ function initClinic() {
   $('#fixes').onchange = e => { const id = e.target.dataset.id; if (!id) return; e.target.checked ? S.applied.push(id) : S.applied.splice(S.applied.indexOf(id), 1); renderClinic(); };
   $('#fixes').onclick = e => { if (e.target.id === 'reset') { S.applied = []; renderClinic(); } };
 }
-function heatC(r) { return r < .6 ? '#D7F0EA' : r < .85 ? '#FFE9B5' : r < 1 ? '#FFC9A8' : '#F08B6E'; }
+function heatC(r) { return r < .6 ? '#E2EEEA' : r < .85 ? '#F3E8CF' : r < 1 ? '#F2D6C6' : '#E3A58C'; }
 function renderClinic() {
   $('#seaO').textContent = '×' + S.season.toFixed(2); fMark();
   const M = W.prioritise(S.season, S.fw, S.applied), fl = M.flow;
@@ -113,7 +129,7 @@ function renderClinic() {
   $('#ckpi').innerHTML = `<div><b>${Math.round(fl[0].daily)}</b><small>patients / day</small></div><div><b>${Math.round(M.totW)}′</b><small>Σ peak wait (min)</small></div><div><b>${Math.round(M.totR)}</b><small>Σ risk RPN*</small></div><div><b>${worst.st.name}</b><small>bottleneck @ ${worst.peakH}:00</small></div>`;
   $('#heat').innerHTML = '<span class="h"></span>' + W.HOURS.map(h => `<span class="h">${h}</span>`).join('') + fl.map(x => `<span class="r">${x.st.name}</span>` + x.hrs.map((h, i) => `<span style="background:${heatC(h.rho)}" title="${x.st.name} ${W.HOURS[i]}:00 — λ ${h.lam.toFixed(0)}/h, c ${h.c}, ρ ${(h.rho * 100).toFixed(0)}%, wait ${h.wq.toFixed(0)} min">${Math.round(h.rho * 100)}</span>`).join('')).join('');
   const rk = M.risks.map((r, i) => ({ r, w: W.WEAK[i] })).sort((a, b) => b.r.r - a.r.r), mx = rk[0].r.r;
-  $('#weak').innerHTML = `<tr><th>Weak point</th><th>I·F·P·√D</th><th>ρ boost</th><th>RPN*</th></tr>` + rk.map(({ r, w }) => `<tr><td><b>${w.title}</b><br><small style="color:var(--mu)">${W.ST.find(s => s.id === w.st).name}</small></td><td class="m">${r.I}·${r.F}·${r.P}·√${r.D}</td><td class="m">×${((1 + W.RCF.kappa * r.over) * (1 + W.RCF.delta * r.down)).toFixed(2)}</td><td class="m"><span class="tag" style="--k:${r.r > 120 ? '#E8613C' : r.r > 50 ? '#EFAE2B' : '#1C9C97'}">${r.r.toFixed(0)}</span><div class="stack" style="width:70px"><i style="--k:#E8613C;width:${r.r / mx * 100}%"></i></div></td></tr>`).join('');
+  $('#weak').innerHTML = `<tr><th>Weak point</th><th>I·F·P·√D</th><th>ρ boost</th><th>RPN*</th></tr>` + rk.map(({ r, w }) => `<tr><td><b>${w.title}</b><br><small style="color:var(--mu)">${W.ST.find(s => s.id === w.st).name}</small></td><td class="m">${r.I}·${r.F}·${r.P}·√${r.D}</td><td class="m">×${((1 + W.RCF.kappa * r.over) * (1 + W.RCF.delta * r.down)).toFixed(2)}</td><td class="m"><span class="tag" style="--k:${r.r > 120 ? '#D4704E' : r.r > 50 ? '#CFA24F' : '#4F978F'}">${r.r.toFixed(0)}</span><div class="stack" style="width:70px"><i style="--k:#D4704E;width:${r.r / mx * 100}%"></i></div></td></tr>`).join('');
   const done = S.applied.map(id => W.FIXES.find(f => f.id === id));
   $('#fixes').innerHTML = M.fixes.map((x, i) => `<label class="fix"><input type="checkbox" data-id="${x.f.id}"><div><b>${i + 1}. ${x.f.title}</b><small>−${x.dR.toFixed(0)} risk · −${x.dW.toFixed(0)} min peak wait · effort ${['', 'low', 'med', 'high'][x.f.effort]} · $${x.f.cost}k</small><div class="stack">${W.F_TERMS.map(t => `<i style="--k:${t[3]};width:${x.part[t[0]] * 100}%"></i>`).join('')}</div></div><span class="mono" style="font-weight:600">${pct(x.prio)}</span></label>`).join('') +
     (done.length ? `<p class="note" style="margin-top:10px">Applied: ${done.map(f => '<b>' + f.title + '</b>').join(', ')} · <button class="btn" id="reset">Reset</button></p>` : '');
@@ -121,7 +137,6 @@ function renderClinic() {
   save();
 }
 
-/* ---------------- Equations (copyable) ---------------- */
 const EQ = [
   { t: 'Shared kernel A — queue wait (stage 3, both examples)', txt: 'Wq = ( ρ^(√(2(c+1)) − 1) / (c·(1 − ρ)) ) · ((ca² + cs²) / 2) · s     with ρ = λ·s / c  (ρ < 1)\nW_total = Wq + backlog/(c·μ)   (backlog carried hour-to-hour when λ > c·μ)', tex: 'W_q=\\frac{\\rho^{\\sqrt{2(c+1)}-1}}{c(1-\\rho)}\\cdot\\frac{c_a^2+c_s^2}{2}\\cdot s,\\quad \\rho=\\frac{\\lambda s}{c}', legend: [['λ', 'arrival rate'], ['c', 'servers / slots'], ['s', 'mean service time (1/μ)'], ['ca², cs²', 'squared coeff. of variation of arrivals / service'], ['ρ', 'utilisation']] },
   { t: 'Shared kernel B — gated weighted score (stage 5, both examples)', txt: 'Score = G · Σₖ ŵₖ · sₖ        ŵₖ = wₖ / Σⱼ wⱼ ,   sₖ ∈ [0,1] ,   G ∈ {0,1}', tex: '\\text{Score}=G\\cdot\\sum_k \\hat w_k s_k,\\quad \\hat w_k=\\frac{w_k}{\\sum_j w_j}', legend: [['G', 'all hard gates pass'], ['wₖ', 'policy slider'], ['sₖ', 'normalised sub-score']] },
@@ -136,7 +151,6 @@ function renderEq() {
   $('#eqs').onclick = e => { const b = e.target; if (b.dataset.all) copy(EQ.map(x => '## ' + x.t + '\n' + x.txt).join('\n\n')); else if (b.dataset.c) copy(EQ[b.dataset.c][b.dataset.f]); };
 }
 
-/* ---------------- tabs ---------------- */
 function show(v) {
   S.view = v; if (location.hash.slice(1) !== v) history.replaceState(null, '', '#' + v);
   document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
