@@ -1,0 +1,4 @@
+fix_id,kind,target,field,delta,from_hour,to_hour
+f1,staff,rec,,1,8,14
+f1,risk,w1,F,-2,,
+f2,staff,tri,,1,8,14

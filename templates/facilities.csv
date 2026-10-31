@@ -1,0 +1,4 @@
+id,name,tier,x,y,services,capacity_per_day,price_multiplier,referrals_per_day,waitlist,quality,reviews
+sag,Sarema General,public,29,27,lab xray mri cardio dialysis ortho mater peds physio,60,0.95,51,17,0.78,900
+ntg,Northgate Teaching,public,88,18,lab xray mri cardio ortho mater peds physio onco,70,1,44,73,0.86,1200
+krh,Kestrel Regional,public,66,58,lab xray mri cardio dialysis ortho mater peds,50,0.95,21,42,0.74,600

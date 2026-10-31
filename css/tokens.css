@@ -1,0 +1,176 @@
+:root {
+  --paper: #F7F4EF;
+  --paper2: #EFEBE4;
+  --card: #FDFBF8;
+  --ink: #34323A;
+  --mu: #66626D;
+  --fa: #A39EA8;
+  --line: #E9E3DA;
+  --line2: #DCD4C9;
+  --persimmon: #C98A72;
+  --persimmon-ink: #8A4E39;
+  --saffron: #C9A970;
+  --saffron-ink: #7C6430;
+  --sky: #7F9DBA;
+  --sky-ink: #3F5E7A;
+  --lagoon: #6FA39C;
+  --lagoon-ink: #2F6A63;
+  --iris: #9890C4;
+  --iris-ink: #554D8A;
+  --rose: #C3939F;
+  --rose-ink: #84505E;
+  --moss: #8FA57A;
+  --moss-ink: #52683F;
+  --pub: var(--lagoon);
+  --con: var(--saffron);
+  --pri: var(--rose);
+  --heat0: #EAF1EE;
+  --heat1: #F1EBDA;
+  --heat2: #F2DFD3;
+  --heat3: #E6BBA8;
+  --r-card: 26px 26px 26px 8px;
+  --r-soft: 18px 18px 18px 6px;
+  --r-pill: 999px;
+  --shadow: 0 18px 40px -34px rgba(90, 70, 50, 0.2);
+  --font-ui: "Instrument Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-head: Fraunces, Georgia, "Times New Roman", serif;
+  --font-mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+@supports (color: oklch(50% 0.1 20)) {
+  :root {
+    --paper: oklch(96.8% 0.007 81);
+    --paper2: oklch(94.1% 0.01 82);
+    --card: oklch(98.9% 0.005 78);
+    --ink: oklch(32.2% 0.014 297);
+    --mu: oklch(50.4% 0.018 302);
+    --fa: oklch(70.7% 0.015 308);
+    --line: oklch(91.8% 0.014 78);
+    --line2: oklch(87.3% 0.017 76);
+    --persimmon: oklch(69.1% 0.085 42);
+    --persimmon-ink: oklch(49% 0.087 40);
+    --saffron: oklch(75% 0.083 81);
+    --saffron-ink: oklch(51.6% 0.076 85);
+    --sky: oklch(68.4% 0.055 248);
+    --sky-ink: oklch(47% 0.058 247);
+    --lagoon: oklch(67.7% 0.056 185);
+    --lagoon-ink: oklch(48.3% 0.063 185);
+    --iris: oklch(67.9% 0.076 291);
+    --iris-ink: oklch(45.7% 0.097 288);
+    --rose: oklch(71.2% 0.06 2);
+    --rose-ink: oklch(49.5% 0.072 3);
+    --moss: oklch(69.3% 0.066 130);
+    --moss-ink: oklch(48.8% 0.068 131);
+  }
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  scrollbar-color: var(--line2) transparent;
+  scrollbar-width: thin;
+}
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font: 400 15px/1.55 var(--font-ui);
+  min-height: 100vh;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(60vmax 40vmax at 12% 0%, color-mix(in srgb, var(--persimmon) 3%, transparent), transparent 70%);
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+:focus-visible {
+  outline: 2px solid var(--persimmon-ink);
+  outline-offset: 2px;
+}
+
+h1,
+h2,
+h3,
+.serif {
+  font-family: var(--font-head);
+  font-weight: 400;
+  letter-spacing: -0.01em;
+}
+
+.mono,
+code,
+pre {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.vh {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line2) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--line2);
+  border-radius: 8px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--fa);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}

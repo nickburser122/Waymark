@@ -1,0 +1,4 @@
+id,name,base_price,complexity
+lab,Lab,12,0.3
+xray,X-ray,25,0.4
+mri,MRI/CT,140,1.6

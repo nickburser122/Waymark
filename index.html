@@ -3,71 +3,34 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Waymark — one pipeline for care routing &amp; clinic flow</title>
-<meta name="theme-color" content="#FBF6EE">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='10' fill='%23E8613C'/%3E%3Cpath d='M9 23C9 15 23 17 23 9' fill='none' stroke='%23fff' stroke-width='2.6' stroke-linecap='round'/%3E%3Ccircle cx='23' cy='9' r='4' fill='%23FFE3B0'/%3E%3C/svg%3E">
-<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css">
+<title>Waymark · care routing and clinic flow</title>
+<meta name="theme-color" content="#F7F4EF">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='10' fill='%23C98A72'/%3E%3Cpath d='M9 23C9 15 23 17 23 9' fill='none' stroke='%23fff' stroke-width='2.6' stroke-linecap='round'/%3E%3Ccircle cx='23' cy='9' r='4' fill='%23F7F4EF'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500&family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/tokens.css">
+<link rel="stylesheet" href="css/components.css">
+<link rel="stylesheet" href="css/views.css">
 </head>
 <body>
-<header>
-  <div class="brand">
-    <svg width="44" height="44" viewBox="0 0 44 44" aria-hidden="true"><rect width="44" height="44" rx="15" fill="#E8613C"/><path d="M12 32C12 21 32 23 32 12" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"/><circle cx="12" cy="32" r="3.2" fill="#9EE6DF"/><circle cx="32" cy="12" r="5" fill="#FFE3B0"/></svg>
-    <div><h1>Waymark</h1><small>One pipeline · demand → capacity → queue → risk → score → decision</small></div>
-  </div>
-  <nav id="tabs" aria-label="Views">
-    <button data-v="route" class="on">① Referral routing</button>
-    <button data-v="clinic">② Clinic flow</button>
-    <button data-v="eq">Equations</button>
-  </nav>
-</header>
-<div class="pipe" id="pipe" aria-label="Shared pipeline stages"></div>
-<main>
-  <section id="v-route" class="view">
-    <div class="grid g3">
-      <div class="col">
-        <div class="card">
-          <h3>Patient <span>input → stage 1</span></h3>
-          <div class="chips" id="cases"></div>
-          <label class="lbl">Needs</label><div class="chips" id="svc"></div>
-          <label class="lbl">Urgency</label><div class="seg" id="urg"><button data-u="0">Routine</button><button data-u="1">Soon</button><button data-u="2">Urgent</button></div>
-          <label class="lbl">Previously treated at (continuity)</label><select id="prev"></select>
-        </div>
-        <div class="card"><h3>Policy weights <span>stage 5</span></h3><div class="chips" id="rpol"></div><div id="rw"></div></div>
-      </div>
-      <div class="col">
-        <div class="map"><div class="legend"><span><i style="--c:var(--pub)"></i>Public</span><span><i style="--c:var(--con)"></i>Contracted</span><span><i style="--c:var(--pri)"></i>Private</span></div><svg id="map" viewBox="0 0 880 600" role="img" aria-label="Region map; click to move the patient"></svg><div class="hint">Drag the patient · click a site to set continuity · ring = slots booked</div></div>
-        <div class="card rec" id="rec"></div>
-      </div>
-      <div class="col"><div class="card" id="rank"></div><div class="card" id="cohort"></div></div>
-    </div>
-  </section>
-
-  <section id="v-clinic" class="view" hidden>
-    <div class="grid g2">
-      <div class="card"><h3>Season & policy <span>stage 1 + 5</span></h3>
-        <label class="lbl">Demand multiplier (season) <output id="seaO" class="mono"></output></label><input type="range" id="sea" min="0.8" max="1.3" step="0.01" value="1" style="width:100%;accent-color:var(--persimmon)">
-        <label class="lbl">Fix priority weights</label><div class="chips" id="fpol"></div><div id="fw"></div>
-      </div>
-      <div class="card"><h3>Clinic health <span>live from the pipeline</span></h3><div class="kpi" id="ckpi"></div><p class="note">Ticking a fix below re-runs the whole pipeline with the new staffing and risk scores; remaining fixes are re-ranked against the improved baseline (marginal value, not stacked double-counting).</p></div>
-    </div>
-    <div class="card" style="margin-top:16px"><h3>Queue heatmap — utilisation ρ by hour <span>stage 2 + 3</span></h3><div class="heat" id="heat"></div></div>
-    <div class="grid g2" style="margin-top:16px">
-      <div class="card"><h3>Weak points <span>stage 4 · RPN*</span></h3><table id="weak"></table></div>
-      <div class="card"><h3>Fix plan <span>stage 5 + 6 · priority per effort</span></h3><div id="fixes"></div></div>
-    </div>
-  </section>
-
-  <section id="v-eq" class="view" hidden>
-    <div class="card"><h3>The shared pipeline <span>both examples run the same six stages and the same two kernels</span></h3>
-      <p class="note" style="margin-top:0">Every equation below has <b>Copy</b> (plain text) and <b>LaTeX</b> buttons. Numbers are the live defaults used by the app.</p>
-      <div id="eqs"></div>
-    </div>
-  </section>
-</main>
-<div class="toast" id="toast" hidden></div>
-<script src="js/engine.js"></script>
-<script src="js/app.js"></script>
+<div id="app">
+  <header class="top">
+    <a class="brand" href="#route" aria-label="Waymark, routing">
+      <svg width="40" height="40" viewBox="0 0 44 44" aria-hidden="true"><rect width="44" height="44" rx="15" class="brand-bg"/><path d="M12 32C12 21 32 23 32 12" fill="none" stroke="#FDFBF8" stroke-width="3" stroke-linecap="round"/><circle cx="12" cy="32" r="3.2" class="brand-dot1"/><circle cx="32" cy="12" r="5" class="brand-dot2"/></svg>
+      <span><h1>Waymark</h1><small>Care routing and clinic flow</small></span>
+    </a>
+    <nav id="tabs" aria-label="Views">
+      <a href="#route" data-view="route">Routing</a>
+      <a href="#clinic" data-view="clinic">Clinic</a>
+      <a href="#data" data-view="data">Data</a>
+      <a href="#eq" data-view="eq">Equations</a>
+    </nav>
+    <div id="explain-switch" class="explain-switch"></div>
+  </header>
+  <div class="pipe" id="pipe" role="list" aria-label="Pipeline stages"></div>
+  <main id="main"></main>
+</div>
+<script type="module" src="js/app.js"></script>
 </body>
 </html>

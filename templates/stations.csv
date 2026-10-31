@@ -1,0 +1,4 @@
+id,name,service_min,service_cv2
+rec,Reception,1.6,0.4
+tri,Triage,3,0.6
+rcd,Records,4,0.8
