@@ -558,4 +558,17 @@ export const register = t => {
       t.near(shown, row.total, 6e-4, `shown total case ${i}`);
     });
   });
+
+  t.test('S4 theme setting defaults to system, persists and ignores bad values', () => {
+    const store = new Map();
+    const storage = { getItem: k => (store.has(k) ? store.get(k) : null), setItem: (k, v) => { store.set(k, v); }, removeItem: k => { store.delete(k); } };
+    t.same(loadSettings(storage).theme, 'system');
+    store.set(SETTINGS_KEY, JSON.stringify({ version: 3, theme: 'dark' }));
+    t.same(loadSettings(storage).theme, 'dark');
+    store.set(SETTINGS_KEY, JSON.stringify({ version: 3, theme: 'neon' }));
+    t.same(loadSettings(storage).theme, 'system');
+    store.delete(SETTINGS_KEY);
+    store.set(LEGACY_KEY, JSON.stringify({ view: 'route' }));
+    t.same(loadSettings(storage).theme, 'system');
+  });
 };

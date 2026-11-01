@@ -9,6 +9,7 @@ export const defaultSettings = () => ({
   routeMode: 'single',
   clinicMode: 'single',
   explain: 'plain',
+  theme: 'system',
   patientId: '',
   siteId: 'main',
   applied: [],
@@ -16,6 +17,8 @@ export const defaultSettings = () => ({
 });
 
 const VIEWS = ['route', 'clinic', 'data', 'eq'];
+
+export const THEMES = ['system', 'light', 'dark'];
 
 export const migrateLegacy = old => {
   const next = defaultSettings();
@@ -51,6 +54,7 @@ export const hydrateSettings = stored => {
   if (['single', 'batch'].includes(stored.routeMode)) out.routeMode = stored.routeMode;
   if (['single', 'batch'].includes(stored.clinicMode)) out.clinicMode = stored.clinicMode;
   if (['plain', 'formula'].includes(stored.explain)) out.explain = stored.explain;
+  if (THEMES.includes(stored.theme)) out.theme = stored.theme;
   if (typeof stored.patientId === 'string') out.patientId = stored.patientId;
   if (typeof stored.siteId === 'string') out.siteId = stored.siteId;
   if (Array.isArray(stored.applied)) out.applied = stored.applied.filter(id => typeof id === 'string');

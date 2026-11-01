@@ -76,8 +76,18 @@
   color: var(--paper);
 }
 
+.switches {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .explain-switch .seg {
   min-width: 170px;
+}
+
+.theme-switch .seg {
+  min-width: 200px;
 }
 
 .pipe {
@@ -182,7 +192,7 @@ main {
 .pill {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   flex-wrap: wrap;
   padding: 8px 12px;
   border-radius: 16px 16px 16px 5px;
@@ -226,6 +236,7 @@ main {
 
 .pill .btn {
   white-space: nowrap;
+  padding: 3px 9px;
 }
 
 .pill .btn {
@@ -1277,11 +1288,14 @@ td.warn::after {
     text-align: center;
   }
 
-  .explain-switch {
+  .switches,
+  .explain-switch,
+  .theme-switch {
     width: 100%;
   }
 
-  .explain-switch .seg {
+  .explain-switch .seg,
+  .theme-switch .seg {
     min-width: 0;
   }
 

@@ -8,6 +8,7 @@ export const MANIFEST = [
   'css/views.css',
   'js/ui/components.js',
   'js/ui/panels.js',
+  'js/ui/theme.js',
   'js/ui/explain.js',
   'js/ui/map.js',
   'js/ui/grid.js',

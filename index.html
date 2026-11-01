@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Waymark · care routing and clinic flow</title>
 <meta name="theme-color" content="#F7F4EF">
+<script>try{var s=JSON.parse(localStorage.getItem('waymark.v3'));document.documentElement.setAttribute('data-theme',s&&['light','dark','system'].indexOf(s.theme)>-1?s.theme:'system')}catch(e){document.documentElement.setAttribute('data-theme','system')}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='10' fill='%23C98A72'/%3E%3Cpath d='M9 23C9 15 23 17 23 9' fill='none' stroke='%23fff' stroke-width='2.6' stroke-linecap='round'/%3E%3Ccircle cx='23' cy='9' r='4' fill='%23F7F4EF'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -26,7 +27,10 @@
       <a href="#data" data-view="data">Data</a>
       <a href="#eq" data-view="eq">Equations</a>
     </nav>
-    <div id="explain-switch" class="explain-switch"></div>
+    <div class="switches">
+      <div id="theme-switch" class="theme-switch"></div>
+      <div id="explain-switch" class="explain-switch"></div>
+    </div>
   </header>
   <div class="pipe" id="pipe" role="list" aria-label="Pipeline stages"></div>
   <main id="main"></main>

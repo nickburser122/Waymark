@@ -1,4 +1,5 @@
 import { loadSettings, saveSettings } from './data/migrate.js';
+import { applyTheme, watchSystemTheme } from './ui/theme.js';
 import { createManager, createIndexedDbBackend, createMemoryBackend } from './data/store.js';
 import { sanitiseValue, BY_KEY } from './core/params.js';
 import { initTooltips, h, Segmented } from './ui/components.js';
@@ -112,6 +113,19 @@ const start = async () => {
     }
   });
   document.getElementById('explain-switch').append(explainSwitch.el);
+  const themeSwitch = Segmented({
+    label: 'Colour theme',
+    options: [{ value: 'system', label: 'System' }, { value: 'light', label: 'Light' }, { value: 'dark', label: 'Dark' }],
+    value: settings.theme,
+    onChange: value => {
+      settings.theme = value;
+      applyTheme(value);
+      persist();
+    }
+  });
+  document.getElementById('theme-switch').append(themeSwitch.el);
+  applyTheme(settings.theme);
+  watchSystemTheme();
 
   manager.subscribe(() => {
     if (views[current]) views[current].update();

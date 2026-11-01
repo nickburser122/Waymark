@@ -32,6 +32,12 @@
   --r-soft: 18px 18px 18px 6px;
   --r-pill: 999px;
   --shadow: 0 18px 40px -34px rgba(90, 70, 50, 0.2);
+  --shadow-pop: 0 24px 48px -24px rgba(60, 45, 30, 0.35);
+  --shadow-thumb: 0 2px 6px -2px rgba(60, 45, 30, 0.4);
+  --shadow-dialog: 0 40px 80px -40px rgba(40, 30, 20, 0.5);
+  --scrim: color-mix(in srgb, var(--ink) 28%, transparent);
+  --wash: 3%;
+  color-scheme: light;
   --font-ui: "Instrument Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-head: Fraunces, Georgia, "Times New Roman", serif;
   --font-mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
@@ -65,6 +71,129 @@
   }
 }
 
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --paper: #18171C;
+  --paper2: #26242C;
+  --card: #222027;
+  --ink: #ECE8E2;
+  --mu: #A9A4AF;
+  --fa: #6C6773;
+  --line: #2E2B34;
+  --line2: #403C49;
+  --persimmon: #D49B84;
+  --persimmon-ink: #F2BFAB;
+  --saffron: #D2B57C;
+  --saffron-ink: #EAD39F;
+  --sky: #8FADC9;
+  --sky-ink: #B8D0E6;
+  --lagoon: #7FB3AC;
+  --lagoon-ink: #ABD9D2;
+  --iris: #A8A0D2;
+  --iris-ink: #CFC9EF;
+  --rose: #CFA0AC;
+  --rose-ink: #EDC8D2;
+  --moss: #9FB58A;
+  --moss-ink: #C6DAB2;
+  --heat0: #22302E;
+  --heat1: #37342A;
+  --heat2: #483229;
+  --heat3: #5C3727;
+  --shadow: 0 18px 40px -34px rgba(0, 0, 0, 0.7);
+  --shadow-pop: 0 24px 48px -24px rgba(0, 0, 0, 0.75);
+  --shadow-thumb: 0 2px 6px -2px rgba(0, 0, 0, 0.8);
+  --shadow-dialog: 0 40px 80px -40px rgba(0, 0, 0, 0.9);
+  --scrim: rgba(0, 0, 0, 0.6);
+  --wash: 7%;
+  @supports (color: oklch(50% 0.1 20)) {
+    --paper: oklch(20.8% 0.010 295);
+    --paper2: oklch(26.6% 0.015 297);
+    --card: oklch(24.9% 0.013 298);
+    --ink: oklch(93.2% 0.009 78);
+    --mu: oklch(72.6% 0.017 306);
+    --fa: oklch(52.2% 0.020 305);
+    --line: oklch(29.6% 0.017 301);
+    --line2: oklch(36.5% 0.023 299);
+    --persimmon: oklch(73.8% 0.076 43);
+    --persimmon-ink: oklch(84.5% 0.065 42);
+    --saffron: oklch(78.5% 0.081 84);
+    --saffron-ink: oklch(87.3% 0.072 87);
+    --sky: oklch(73.5% 0.052 247);
+    --sky-ink: oklch(84.7% 0.040 246);
+    --lagoon: oklch(72.8% 0.056 186);
+    --lagoon-ink: oklch(85.1% 0.049 185);
+    --iris: oklch(73.0% 0.072 292);
+    --iris-ink: oklch(85.3% 0.053 292);
+    --rose: oklch(75.3% 0.058 2);
+    --rose-ink: oklch(86.7% 0.044 360);
+    --moss: oklch(74.5% 0.065 130);
+    --moss-ink: oklch(86.3% 0.058 129);
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]):not([data-theme="dark"]),
+  :root[data-theme="system"] {
+    color-scheme: dark;
+    --paper: #18171C;
+    --paper2: #26242C;
+    --card: #222027;
+    --ink: #ECE8E2;
+    --mu: #A9A4AF;
+    --fa: #6C6773;
+    --line: #2E2B34;
+    --line2: #403C49;
+    --persimmon: #D49B84;
+    --persimmon-ink: #F2BFAB;
+    --saffron: #D2B57C;
+    --saffron-ink: #EAD39F;
+    --sky: #8FADC9;
+    --sky-ink: #B8D0E6;
+    --lagoon: #7FB3AC;
+    --lagoon-ink: #ABD9D2;
+    --iris: #A8A0D2;
+    --iris-ink: #CFC9EF;
+    --rose: #CFA0AC;
+    --rose-ink: #EDC8D2;
+    --moss: #9FB58A;
+    --moss-ink: #C6DAB2;
+    --heat0: #22302E;
+    --heat1: #37342A;
+    --heat2: #483229;
+    --heat3: #5C3727;
+    --shadow: 0 18px 40px -34px rgba(0, 0, 0, 0.7);
+    --shadow-pop: 0 24px 48px -24px rgba(0, 0, 0, 0.75);
+    --shadow-thumb: 0 2px 6px -2px rgba(0, 0, 0, 0.8);
+    --shadow-dialog: 0 40px 80px -40px rgba(0, 0, 0, 0.9);
+    --scrim: rgba(0, 0, 0, 0.6);
+    --wash: 7%;
+    @supports (color: oklch(50% 0.1 20)) {
+      --paper: oklch(20.8% 0.010 295);
+      --paper2: oklch(26.6% 0.015 297);
+      --card: oklch(24.9% 0.013 298);
+      --ink: oklch(93.2% 0.009 78);
+      --mu: oklch(72.6% 0.017 306);
+      --fa: oklch(52.2% 0.020 305);
+      --line: oklch(29.6% 0.017 301);
+      --line2: oklch(36.5% 0.023 299);
+      --persimmon: oklch(73.8% 0.076 43);
+      --persimmon-ink: oklch(84.5% 0.065 42);
+      --saffron: oklch(78.5% 0.081 84);
+      --saffron-ink: oklch(87.3% 0.072 87);
+      --sky: oklch(73.5% 0.052 247);
+      --sky-ink: oklch(84.7% 0.040 246);
+      --lagoon: oklch(72.8% 0.056 186);
+      --lagoon-ink: oklch(85.1% 0.049 185);
+      --iris: oklch(73.0% 0.072 292);
+      --iris-ink: oklch(85.3% 0.053 292);
+      --rose: oklch(75.3% 0.058 2);
+      --rose-ink: oklch(86.7% 0.044 360);
+      --moss: oklch(74.5% 0.065 130);
+      --moss-ink: oklch(86.3% 0.058 129);
+    }
+  }
+}
+
 * {
   box-sizing: border-box;
   margin: 0;
@@ -91,7 +220,7 @@ body::before {
   inset: 0;
   z-index: -1;
   pointer-events: none;
-  background: radial-gradient(60vmax 40vmax at 12% 0%, color-mix(in srgb, var(--persimmon) 3%, transparent), transparent 70%);
+  background: radial-gradient(60vmax 40vmax at 12% 0%, color-mix(in srgb, var(--persimmon) var(--wash), transparent), transparent 70%);
 }
 
 button,

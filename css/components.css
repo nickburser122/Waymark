@@ -150,7 +150,7 @@
   border: 1px solid var(--line2);
   border-radius: 16px 16px 16px 6px;
   padding: 5px;
-  box-shadow: 0 24px 48px -24px rgba(60, 45, 30, 0.35);
+  box-shadow: var(--shadow-pop);
 }
 
 .sel-opt {
@@ -214,7 +214,7 @@
   border-radius: 50%;
   background: var(--card);
   border: 2px solid var(--k, var(--persimmon-ink));
-  box-shadow: 0 2px 6px -2px rgba(60, 45, 30, 0.4);
+  box-shadow: var(--shadow-thumb);
 }
 
 .sl-thumb:focus-visible {
@@ -346,7 +346,7 @@
   background: var(--card);
   color: var(--ink);
   border: 1px solid var(--line2);
-  box-shadow: 0 14px 30px -16px rgba(60, 45, 30, 0.4);
+  box-shadow: var(--shadow-pop);
   font-size: 12.5px;
   line-height: 1.45;
   pointer-events: none;
@@ -363,7 +363,7 @@
   display: grid;
   place-items: center;
   padding: 18px;
-  background: color-mix(in srgb, var(--ink) 28%, transparent);
+  background: var(--scrim);
 }
 
 .dlg {
@@ -372,7 +372,7 @@
   border: 1px solid var(--line2);
   border-radius: var(--r-card);
   padding: 22px 24px;
-  box-shadow: 0 40px 80px -40px rgba(40, 30, 20, 0.5);
+  box-shadow: var(--shadow-dialog);
 }
 
 .dlg h3 {
