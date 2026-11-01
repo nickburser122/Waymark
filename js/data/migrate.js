@@ -10,6 +10,9 @@ export const defaultSettings = () => ({
   clinicMode: 'single',
   explain: 'plain',
   theme: 'system',
+  dataModel: 'route',
+  dataLayout: 'cards',
+  dataTable: 'facilities',
   patientId: '',
   siteId: 'main',
   applied: [],
@@ -55,6 +58,9 @@ export const hydrateSettings = stored => {
   if (['single', 'batch'].includes(stored.clinicMode)) out.clinicMode = stored.clinicMode;
   if (['plain', 'formula'].includes(stored.explain)) out.explain = stored.explain;
   if (THEMES.includes(stored.theme)) out.theme = stored.theme;
+  if (['route', 'clinic'].includes(stored.dataModel)) out.dataModel = stored.dataModel;
+  if (['cards', 'table'].includes(stored.dataLayout)) out.dataLayout = stored.dataLayout;
+  if (typeof stored.dataTable === 'string') out.dataTable = stored.dataTable;
   if (typeof stored.patientId === 'string') out.patientId = stored.patientId;
   if (typeof stored.siteId === 'string') out.siteId = stored.siteId;
   if (Array.isArray(stored.applied)) out.applied = stored.applied.filter(id => typeof id === 'string');

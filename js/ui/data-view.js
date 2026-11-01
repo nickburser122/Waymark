@@ -1,4 +1,4 @@
-import { h, DropZone, ChipGroup, Select, openDialog, askDialog } from './components.js';
+import { h, DropZone, ChipGroup, Select, Segmented, openDialog, askDialog } from './components.js';
 import { html, setHtml } from './escape.js';
 import { download } from './panels.js';
 import { TABLES, TABLE_NAMES, readTable, readMultiJson, tableFromFileName, templateRows, toRecords, qualityScaleOptions, convertQuality, QUALITY_SCALE_LABELS, columnKeys } from '../data/schema.js';
@@ -7,26 +7,42 @@ import { buildSampleTables } from '../data/samples.js';
 import { parseParamsFile } from '../data/export.js';
 import { createGrid } from './grid.js';
 
-const GROUPS = [['route', 'Routing tables'], ['clinic', 'Clinic tables']];
+const MODELS = {
+  route: { label: 'Routing', title: 'Routing data', blurb: 'Where patients can be sent: what each site offers, how busy it is, and who needs care.' },
+  clinic: { label: 'Clinic', title: 'Clinic data', blurb: 'How patients move through one clinic: stations, staffing, arrivals, weak points and fixes.' }
+};
+const tablesOf = model => TABLE_NAMES.filter(t => TABLES[t].view === model);
 
 export const createDataView = ctx => {
-  const { manager } = ctx;
+  const { manager, settings } = ctx;
   const root = h('section', { class: 'view', id: 'v-data', 'aria-label': 'Data' });
-  const state = { grid: null, gridTable: '', pending: null, report: null, note: '' };
+  const state = { grid: null, gridTable: '', pending: null, report: null, note: '', seenVersion: -1 };
 
-  const undoBtn = h('button', { type: 'button', class: 'btn', text: 'Undo', onClick: () => manager.undo() });
-  const redoBtn = h('button', { type: 'button', class: 'btn', text: 'Redo', onClick: () => manager.redo() });
+  const undoBtn = h('button', { type: 'button', class: 'btn', text: 'Undo', onClick: () => { state.report = null; manager.undo(); } });
+  const redoBtn = h('button', { type: 'button', class: 'btn', text: 'Redo', onClick: () => { state.report = null; manager.redo(); } });
   const startSample = h('button', { type: 'button', class: 'btn primary', text: 'Start from sample', onClick: () => guarded('Start from the sample data?', 'Your tables are replaced with an editable copy of the sample. You can undo this.', () => manager.startFromSample()) });
   const startBlank = h('button', { type: 'button', class: 'btn', text: 'Start blank', onClick: () => guarded('Start with empty tables?', 'Every table is emptied. You can undo this.', () => manager.startBlank()) });
   const resetSample = h('button', { type: 'button', class: 'btn quiet', text: 'Reset to sample', onClick: () => guarded('Reset to the sample?', 'All tables go back to the original sample. You can undo this.', () => manager.resetToSample(), true) });
   const importZone = DropZone({ label: 'Import files', accept: '.csv,.tsv,.json,.txt', multiple: true, compact: true, onFiles: files => importMany(files) });
   const storageLine = h('span', { class: 'status-line', 'aria-live': 'polite' });
   const toolbar = h('div', { class: 'toolbar', style: { 'margin-top': 0 } }, startSample, startBlank, importZone.el, undoBtn, redoBtn, resetSample, storageLine);
-  const head = h('div', { class: 'viewhead' }, h('h2', { text: 'Data' }));
+  const layoutSwitch = Segmented({
+    label: 'Data layout', options: [{ value: 'cards', label: 'Cards' }, { value: 'table', label: 'Tables' }], value: settings.dataLayout || 'cards',
+    onChange: v => { settings.dataLayout = v; ctx.persist(); closeGrid(); state.seenVersion = -1; update(); }
+  });
+  const modelSwitch = Segmented({
+    label: 'Data for', className: 'model-seg',
+    options: [{ value: 'route', label: `Routing · ${tablesOf('route').length} tables` }, { value: 'clinic', label: `Clinic · ${tablesOf('clinic').length} tables` }],
+    value: settings.dataModel || 'route',
+    onChange: v => chooseModel(v)
+  });
+  const modelPanel = h('div', { class: 'card modelpanel' });
+  const head = h('div', { class: 'viewhead' }, h('h2', { text: 'Data' }), layoutSwitch.el);
+  const tableBar = h('div', { class: 'tablebar' });
   const reportBox = h('div', { 'aria-live': 'polite' });
   const gridHost = h('div', { class: 'card', hidden: true });
   const cardsHost = h('div');
-  root.append(head, toolbar, h('div', { class: 'stack-gap' }, reportBox), gridHost, cardsHost);
+  root.append(head, h('span', { class: 'tab-group flush', text: 'Whole dataset' }), toolbar, h('div', { class: 'stack-gap' }, reportBox), h('div', { class: 'stack-gap' }, modelSwitch.el), modelPanel, tableBar, gridHost, cardsHost);
 
   const hasUserData = () => TABLE_NAMES.some(t => manager.sources()[t] === 'yours' && manager.records(t).length);
 
@@ -49,21 +65,28 @@ export const createDataView = ctx => {
     gridHost.replaceChildren();
   };
 
-  const openGrid = (table, records) => {
+  const inTable = () => settings.dataLayout === 'table';
+
+  const openGrid = (table, records, keepFocus) => {
     closeGrid();
     state.gridTable = table;
     state.grid = createGrid({
       manager, table, records: records || manager.records(table),
-      onCancel: () => { closeGrid(); paint(); },
+      onCancel: () => { closeGrid(); if (inTable()) openGrid(table); else paint(); },
       onApply: rowsOut => {
         const outcome = manager.apply({ [table]: rowsOut }, 'yours', manager.files()[table] || '');
-        if (outcome.ok) { closeGrid(); state.report = { kind: 'ok', text: `${TABLES[table].label} updated.` }; paint(); }
+        if (outcome.ok) {
+          closeGrid();
+          state.report = { kind: 'ok', text: `${TABLES[table].label} updated.` };
+          if (inTable()) openGrid(table, undefined, true);
+          else paint();
+        }
       }
     });
     gridHost.hidden = false;
     gridHost.replaceChildren(state.grid.el);
     paint();
-    state.grid.focusFirst();
+    if (!keepFocus) state.grid.focusFirst();
   };
 
   const reject = (table, message, issues, records) => {
@@ -247,17 +270,123 @@ export const createDataView = ctx => {
     return card;
   };
 
+  const paintTableBar = () => {
+    tableBar.hidden = !inTable();
+    if (!inTable()) return;
+    const selected = currentTable();
+    const tabs = [];
+    [settings.dataModel || 'route'].forEach(view => {
+      tablesOf(view).forEach(name => {
+        const st = manager.status(name);
+        const tab = h('button', { type: 'button', role: 'tab', class: 'tab', id: `tab-${name}`, 'aria-selected': String(name === selected), tabindex: name === selected ? '0' : '-1', 'data-t': name },
+          TABLES[name].label, h('small', { text: String(st.rows) }));
+        tab.addEventListener('click', () => chooseTable(name));
+        tab.addEventListener('keydown', e => {
+          const all = Array.from(tableBar.querySelectorAll('[role=tab]'));
+          const at = all.indexOf(tab);
+          const go = { ArrowRight: at + 1, ArrowLeft: at - 1, Home: 0, End: all.length - 1 }[e.key];
+          if (go === undefined) return;
+          e.preventDefault();
+          const next = all[(go + all.length) % all.length];
+          chooseTable(next.dataset.t, true);
+        });
+        tabs.push(tab);
+      });
+    });
+    const st = manager.status(selected);
+    const spec = TABLES[selected];
+    const upload = DropZone({ label: 'Upload', accept: '.csv,.tsv,.json,.txt', compact: true, onFiles: files => importText(selected, files[0]) });
+    const label = st.kind === 'invalid' ? `Invalid (${st.issues})` : st.kind === 'sample' ? 'Sample' : 'Yours';
+    tableBar.replaceChildren(
+      h('div', { class: 'tablist', role: 'tablist', 'aria-label': 'Tables' }, tabs),
+      h('div', { class: 'toolbar tablebar-actions' },
+        h('span', { class: 'tag', style: { '--k': st.kind === 'invalid' ? 'var(--persimmon)' : st.kind === 'sample' ? 'var(--sky)' : 'var(--lagoon)' }, text: label }),
+        h('span', { class: 'meta', text: `${st.rows} ${st.rows === 1 ? 'row' : 'rows'} · needs ${spec.columns.filter(c => c.required).map(c => c.key).join(', ')}${spec.oneOf ? ', lat+lon or x+y' : ''}` }),
+        h('button', { type: 'button', class: 'btn', text: 'Template', onClick: () => download(`${selected}-template.csv`, serialiseCSV(templateRows(selected, buildSampleTables()), { eol: '\n' })) }),
+        upload.el,
+        h('button', { type: 'button', class: 'btn', text: 'Paste', onClick: () => pasteInto(selected) })));
+  };
+
+  const currentTable = () => {
+    const model = settings.dataModel || 'route';
+    return tablesOf(model).includes(settings.dataTable) ? settings.dataTable : tablesOf(model)[0];
+  };
+
+  const chooseModel = model => {
+    settings.dataModel = model;
+    ctx.persist();
+    modelSwitch.setValue(model);
+    state.report = null;
+    state.pending = null;
+    if (inTable()) {
+      closeGrid();
+      settings.dataTable = currentTable();
+      state.seenVersion = -1;
+      update();
+    } else {
+      paint();
+    }
+  };
+
+  const paintModelPanel = () => {
+    const model = settings.dataModel || 'route';
+    const info = MODELS[model];
+    const compiled = manager.compiled();
+    const names = tablesOf(model);
+    const rows = names.reduce((a, t) => a + manager.records(t).length, 0);
+    const warnings = names.reduce((a, t) => a + compiled.byTable[t].warnings, 0);
+    const empty = names.filter(t => manager.records(t).length === 0 && !(TABLES[t].columns.every(c => !c.required) || t === 'travel')).length;
+    const ready = model === 'route' ? compiled.routing.ready : compiled.clinic.ready;
+    const sources = names.map(t => manager.sources()[t]);
+    const origin = sources.every(s => s === 'sample') ? 'Sample' : sources.every(s => s === 'yours') ? 'Yours' : 'Mixed';
+    setHtml(modelPanel, html`<div class="modelhead"><div><h3 class="serif">${info.title}</h3><p class="note">${info.blurb}</p></div>
+      <div class="modelstats"><span class="tag" style="--k:var(--${ready ? 'lagoon' : 'saffron'})">${ready ? 'Ready' : 'Not ready'}</span>
+      <span><b>${names.length}</b> tables</span><span><b>${rows.toLocaleString('en-US')}</b> rows</span><span>${origin}</span>
+      ${warnings ? html`<span><b>${warnings}</b> ${warnings === 1 ? 'warning' : 'warnings'}</span>` : ''}
+      ${empty ? html`<span>${empty} still empty</span>` : ''}</div></div>`);
+  };
+
+  const chooseTable = (name, keepTabFocus) => {
+    settings.dataTable = name;
+    ctx.persist();
+    closeGrid();
+    paintTableBar();
+    openGrid(name, undefined, true);
+    if (keepTabFocus) {
+      const tab = tableBar.querySelector(`#tab-${name}`);
+      if (tab) tab.focus();
+    }
+  };
+
   const paint = () => {
+    paintModelPanel();
+    modelSwitch.setValue(settings.dataModel || 'route');
+    paintTableBar();
+    cardsHost.hidden = inTable();
     undoBtn.disabled = !manager.canUndo();
     redoBtn.disabled = !manager.canRedo();
     storageLine.textContent = manager.storageNote() || (manager.persisted() ? 'Saved in this browser.' : '');
     paintReport();
-    cardsHost.replaceChildren(...GROUPS.map(([view, title]) => h('div', { class: 'stack-gap' },
-      h('h3', { class: 'serif', style: { 'font-size': '19px', 'margin-bottom': '10px' }, text: title }),
-      h('div', { class: 'cards' }, TABLE_NAMES.filter(t => TABLES[t].view === view).map(cardFor)))));
+    cardsHost.replaceChildren(h('div', { class: 'stack-gap' }, h('div', { class: 'cards' }, tablesOf(settings.dataModel || 'route').map(cardFor))));
   };
 
   const update = () => {
+    layoutSwitch.setValue(settings.dataLayout || 'cards');
+    if (inTable()) {
+      const stale = manager.version() !== state.seenVersion;
+      if (stale || !state.gridTable) {
+        state.seenVersion = manager.version();
+        const name = currentTable();
+        settings.dataTable = name;
+        closeGrid();
+        paint();
+        openGrid(name, undefined, true);
+      } else {
+        undoBtn.disabled = !manager.canUndo();
+        redoBtn.disabled = !manager.canRedo();
+      }
+      return;
+    }
     if (state.gridTable) {
       undoBtn.disabled = !manager.canUndo();
       redoBtn.disabled = !manager.canRedo();
@@ -268,8 +397,23 @@ export const createDataView = ctx => {
 
   const focus = opts => {
     if (!opts || !opts.table) return;
+    if (TABLES[opts.table]) {
+      settings.dataModel = TABLES[opts.table].view;
+      modelSwitch.setValue(settings.dataModel);
+      ctx.persist();
+    }
     if (opts.edit) {
-      openGrid(opts.table);
+      settings.dataLayout = 'table';
+      settings.dataTable = opts.table;
+      ctx.persist();
+      layoutSwitch.setValue('table');
+      state.seenVersion = -1;
+      update();
+      if (state.grid) state.grid.focusFirst();
+      return;
+    }
+    if (inTable()) {
+      chooseTable(opts.table);
       return;
     }
     const card = root.querySelector(`#card-${opts.table}`);

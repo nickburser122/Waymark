@@ -16,7 +16,7 @@ python3 -m http.server 8000
 - **Routing, Batch.** Place a whole patients table in a Web Worker. Urgent patients go first, then those with most to lose (regret order). Split plans cover needs no single site offers. A comparison card shows the result against the nearest feasible site, with site load rings and a virtualised, exportable results table.
 - **Clinic, Single.** A fluid queue model per station and hour, with a utilisation heatmap, weak point risk, a ranked fix plan that re-ranks after each fix, and Auto-plan within a budget.
 - **Clinic, Batch.** One row per site, with a drill-in.
-- **Data.** Eleven tables, each with a template, CSV/TSV/JSON upload, paste from a spreadsheet, a column mapper and a grid editor with per-cell validation. A failed upload leaves the last valid data active. Undo and redo cover 50 steps.
+- **Data.** One tab for both models, split into Routing data (4 tables) and Clinic data (7 tables), each with its own summary. Browse as cards or as table tabs with the grid open inline. Every table has a template, CSV/TSV/JSON upload, paste from a spreadsheet, a column mapper and a grid editor with per-cell validation. A failed upload leaves the last valid data active. Undo and redo cover 50 steps.
 - **Equations.** Plain sentences or live-value formulas, copied as text, LaTeX or Markdown, with every parameter taken from the same registry the engine reads.
 - **Plain / Formula** switch in the header changes every explanation in the app.
 - **Theme**: System, Light or Dark from the header. System follows the operating system and updates live; the choice is remembered.
@@ -47,7 +47,7 @@ Staffing may also be uploaded wide (`station_id`, then `h08`, `h09`, …). Quali
 
 ## Storage
 
-- `localStorage` key `waymark.v3`: view, modes, explanation style, theme, applied fixes and every parameter. A `waymark.v2` key is read once and migrated, and left in place.
+- `localStorage` key `waymark.v3`: view, modes, explanation style, theme, data layout, applied fixes and every parameter. A `waymark.v2` key is read once and migrated, and left in place.
 - IndexedDB database `waymark`, store `datasets`, key `active`: the eleven tables, where each came from and the uploaded file names. If it is unavailable, work continues in memory and the Data tab says so.
 
 ## Tests
