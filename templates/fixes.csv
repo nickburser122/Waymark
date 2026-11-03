@@ -1,4 +1,4 @@
-id,title,effort,cost_k
-f1,Split fast-lane for returning patients,1,2
-f2,Float nurse 9–12 for triage,2,18
-f3,Digitise active records,3,40
+id,title,effort,cost_k,needs,alternative_to
+f1,Split fast-lane for returning patients,1,2,space,
+f2,Float nurse 9–12 for triage,2,18,staff budget,
+f3,Digitise active records,3,40,budget approval,f1

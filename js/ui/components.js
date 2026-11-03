@@ -596,3 +596,16 @@ export const ChipGroup = ({ options, selected = [], multi = false, onChange, lab
   paint();
   return { el: root, setSelected: v => { current = Array.isArray(v) ? v.slice() : [v]; paint(); }, getSelected: () => current.slice() };
 };
+
+export const Toast = () => {
+  const el = h('div', { class: 'toast', role: 'status', 'aria-live': 'polite' });
+  el.hidden = true;
+  let timer = null;
+  const show = text => {
+    el.textContent = text;
+    el.hidden = false;
+    clearTimeout(timer);
+    timer = setTimeout(() => { el.hidden = true; }, 3500);
+  };
+  return { el, show };
+};

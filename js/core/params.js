@@ -69,9 +69,13 @@ const routeEntries = [
   { key: 'robustStep', symbol: 'Δw', latex: '\\Delta w', label: 'Robustness step', default: 10, min: 1, max: 50, step: 1, unit: 'pts', plain: v => `Each weight is moved by ${fmtNum(v)} points to test the winner.` },
   { key: 'nearFull', symbol: 'U_near', latex: 'U_{near}', label: 'Near-full threshold', default: 0.9, min: 0.5, max: 1, step: 0.01, unit: '', plain: v => `Sites above ${fmtNum(v * 100)}% of weekly slots count as near full.` },
   { key: 'maxStops', symbol: 'S_max', latex: 'S_{max}', label: 'Split plan stops', default: 3, min: 1, max: 6, step: 1, unit: '', plain: v => `A split plan uses at most ${fmtNum(v)} sites.` },
-  { key: 'waitCap', symbol: 'W_cap', latex: 'W_{cap}', label: 'Wait ceiling', default: 365, min: 1, max: 3650, step: 1, unit: 'd', plain: v => `Waits are shown as at most ${fmtNum(v)} days.` },
+  { key: 'waitCap', symbol: 'W_cap', latex: 'W_{cap}', label: 'Referral wait ceiling', default: 365, min: 1, max: 3650, step: 1, unit: 'd', plain: v => `Waits are shown as at most ${fmtNum(v)} days.` },
   { key: 'qualityFallback', symbol: 'q_0', latex: 'q_{0}', label: 'Fallback quality prior', default: 0.75, min: 0, max: 1, step: 0.01, unit: '', plain: v => `Without any reviews the quality prior is ${fmtNum(v)}.` },
   { key: 'defaultComplexity', symbol: 'κ_default', latex: '\\kappa_{0}', label: 'Default complexity', default: 1, min: 0.1, max: 5, step: 0.1, unit: '', plain: v => `Services without a complexity count as ${fmtNum(v)}.` },
+  { key: 'publicLock', symbol: 'L_pub', latex: 'L_{pub}', label: 'Strict public-first', default: 0, min: 0, max: 1, step: 1, unit: '', group: 'basic', view: 'route', choices: [{ value: 0, label: 'Off' }, { value: 1, label: 'On' }], plain: v => (v === 1 ? 'Private and contracted sites are used only when no public site passes every gate.' : 'All tiers compete on score.') },
+  { key: 'overrideReserve', symbol: 'r_res', latex: 'r_{res}', label: 'Override slot reserve', default: 0.1, min: 0, max: 0.5, step: 0.01, unit: '', plain: v => `Overrides can't take the last ${fmtNum(v * 100)}% of a site's slots.` },
+  { key: 'overrideReachMult', symbol: 'm_R', latex: 'm_R', label: 'Override reach multiplier', default: 1.5, min: 1, max: 3, step: 0.05, unit: '×', plain: v => `Patients may choose sites up to ${fmtNum(v)}× the normal reach.` },
+  { key: 'overrideTolerance', symbol: 'Δ_tol', latex: '\\Delta_{tol}', label: 'Override score tolerance', default: 0.15, min: 0, max: 1, step: 0.01, unit: '', plain: v => `Choices up to ${fmtNum(v)} below the best score are approved. Larger gaps need sign-off.` },
   { key: 'batchOrder', symbol: 'order', latex: '\\text{order}', label: 'Batch order', default: 0, min: 0, max: 1, step: 1, unit: '', choices: [{ value: 0, label: 'Regret' }, { value: 1, label: 'As listed' }], plain: v => (v === 1 ? 'Patients are placed in the order listed.' : 'Patients with most to lose are placed first.') }
 ];
 
@@ -96,8 +100,8 @@ const clinicEntries = [
   { key: 'budget', symbol: 'B', latex: 'B', label: 'Fix budget', default: Infinity, min: 0, max: 10000, step: 1, unit: 'k', group: 'basic', plain: v => (v === Infinity ? 'No budget limit applies to the plan.' : `The plan may spend up to ${fmtNum(v)}k.`) },
   { key: 'bucketMin', symbol: 'Δ', latex: '\\Delta', label: 'Time bucket', default: 60, min: 30, max: 60, step: 30, unit: 'min', choices: [{ value: 30, label: '30 min' }, { value: 60, label: '60 min' }], plain: v => `Queues are tracked in ${fmtNum(v)} minute steps.` },
   { key: 'cRhoMax', symbol: 'ρ_max,clinic', latex: '\\rho_{max}^{c}', label: 'Clinic load limit', default: 0.98, min: 0.5, max: 0.999, step: 0.001, unit: '', plain: v => `Above ${fmtNum(v * 100)}% load only the backlog term counts.` },
-  { key: 'waitMax', symbol: 'W_max', latex: 'W_{max}', label: 'Wait ceiling', default: 240, min: 10, max: 1440, step: 10, unit: 'min', plain: v => `Waits are capped at ${fmtNum(v)} minutes per hour.` },
-  { key: 'kappa', symbol: 'κ', latex: '\\kappa', label: 'Overload risk factor', default: 2, min: 0, max: 10, step: 0.1, unit: '', plain: v => `Each point of load above the knee adds ${fmtNum(v)} to the risk factor.` },
+  { key: 'waitMax', symbol: 'W_max', latex: 'W_{max}', label: 'Clinic wait ceiling', default: 240, min: 10, max: 1440, step: 10, unit: 'min', plain: v => `Waits are capped at ${fmtNum(v)} minutes.` },
+  { key: 'kappa', symbol: 'ω', latex: '\\omega', label: 'Overload risk factor', default: 2, min: 0, max: 10, step: 0.1, unit: '', plain: v => `Each point of load above the knee adds ${fmtNum(v)} to the risk factor.` },
   { key: 'rhoStar', symbol: 'ρ*', latex: '\\rho^{*}', label: 'Load knee', default: 0.85, min: 0.3, max: 1, step: 0.01, unit: '', plain: v => `Risk grows once peak load passes ${fmtNum(v * 100)}%.` },
   { key: 'deltaShare', symbol: 'δ', latex: '\\delta', label: 'Exposure factor', default: 0.5, min: 0, max: 5, step: 0.05, unit: '', plain: v => `Risk rises by ${fmtNum(v)} times the share of patients exposed.` },
   { key: 'rhoClip', symbol: 'ρ_clip', latex: '\\rho_{clip}', label: 'Load ceiling for risk', default: 2, min: 1, max: 5, step: 0.1, unit: '', plain: v => `Peak load counts as at most ${fmtNum(v * 100)}% in risk.` },
@@ -162,6 +166,14 @@ export const paramsFromJSON = json => {
     }
   });
   return out;
+};
+
+export const paramIssues = params => {
+  const issues = [];
+  if (params.marginModerate > params.marginClear) issues.push({ keys: ['marginModerate', 'marginClear'], message: 'The moderate lead margin is above the clear lead margin, so no lead can count as moderate.' });
+  if (params.riskMedium >= params.riskHigh) issues.push({ keys: ['riskMedium', 'riskHigh'], message: 'Medium risk starts at or above high risk, so the medium band is empty.' });
+  if (params.shareRoutine + params.shareSoon + params.shareUrgent === 0) issues.push({ keys: ['shareRoutine', 'shareSoon', 'shareUrgent'], message: 'All class shares are 0, so the three urgency classes are treated as equal shares.' });
+  return issues;
 };
 
 export const ROUTE_PRESETS = Object.freeze({

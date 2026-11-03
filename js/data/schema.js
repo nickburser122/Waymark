@@ -115,6 +115,7 @@ export const TABLES = Object.freeze({
       col('frequency', { required: true, synonyms: ['f', 'freq'] }),
       col('unpredictability', { required: true, synonyms: ['p', 'unpred'] }),
       col('detectability', { required: true, synonyms: ['d', 'detect'] }),
+      col('category', { synonyms: ['type', 'kind'] }),
       site
     ]
   },
@@ -126,6 +127,8 @@ export const TABLES = Object.freeze({
       col('title', { required: true, synonyms: ['name', 'fix'] }),
       col('effort', { required: true, synonyms: ['effort_level'] }),
       col('cost_k', { synonyms: ['cost', 'cost_in_k'] }),
+      col('needs', { synonyms: ['resources', 'requires'] }),
+      col('alternative_to', { synonyms: ['alternative', 'instead_of'] }),
       site
     ]
   },

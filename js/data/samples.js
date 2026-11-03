@@ -145,6 +145,12 @@ const EFFECT_ROWS = [
 
 export const TABLE_ORDER = ['facilities', 'services', 'patients', 'travel', 'stations', 'staffing', 'arrivals', 'routes', 'weak_points', 'fixes', 'fix_effects'];
 
+const FIX_NEEDS_BY_ID = { f1: 'space', f2: 'staff budget', f3: 'budget approval' };
+
+const FIX_ALTERNATIVE_BY_ID = { f3: 'f1' };
+
+const WEAK_CATEGORY_BY_ID = { w1: 'bottleneck', w2: 'oversight', w3: 'information' };
+
 export const buildSampleTables = () => ({
   facilities: rows(['id', 'name', 'tier', 'x', 'y', 'services', 'capacity_per_day', 'referrals_per_day', 'waitlist', 'price_multiplier', 'quality', 'reviews'], FACILITY_ROWS.map(f => [f[0], f[1], f[2], f[3], f[4], f[5], f[6], f[7], f[8], f[9], f[10], f[11]])),
   services: rows(['id', 'name', 'base_price', 'complexity'], SERVICE_ROWS),
@@ -154,8 +160,8 @@ export const buildSampleTables = () => ({
   staffing: rows(['station_id', 'hour', 'servers'], STATION_ROWS.flatMap(st => HOURS.map((h, i) => [st[0], h, STAFFING[st[0]][i]]))),
   arrivals: rows(['hour', 'arrivals', 'arrival_cv2'], HOURS.map((h, i) => [h, ARRIVALS[i], 1])),
   routes: rows(['from', 'to', 'share'], ROUTE_ROWS),
-  weak_points: rows(['id', 'station_id', 'title', 'impact', 'frequency', 'unpredictability', 'detectability'], WEAK_ROWS),
-  fixes: rows(['id', 'title', 'effort', 'cost_k'], FIX_ROWS),
+  weak_points: rows(['id', 'station_id', 'title', 'impact', 'frequency', 'unpredictability', 'detectability', 'category'], WEAK_ROWS.map(r => r.concat(WEAK_CATEGORY_BY_ID[r[0]] || ''))),
+  fixes: rows(['id', 'title', 'effort', 'cost_k', 'needs', 'alternative_to'], FIX_ROWS.map(r => r.concat(FIX_NEEDS_BY_ID[r[0]] || '', FIX_ALTERNATIVE_BY_ID[r[0]] || ''))),
   fix_effects: rows(['fix_id', 'kind', 'target', 'field', 'delta', 'from_hour', 'to_hour'], EFFECT_ROWS)
 });
 

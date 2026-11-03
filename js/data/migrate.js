@@ -1,3 +1,4 @@
+import { TABLES, TABLE_NAMES } from './schema.js';
 import { defaultParams, paramsToJSON, paramsFromJSON, sanitiseValue, BY_KEY } from '../core/params.js';
 
 export const SETTINGS_KEY = 'waymark.v3';
@@ -14,14 +15,47 @@ export const defaultSettings = () => ({
   dataLayout: 'cards',
   dataTable: 'facilities',
   patientId: '',
+  ledgerNames: false,
   siteId: 'main',
-  applied: [],
+  applied: {},
+  resources: { space: true, budget: true, staff: true, approval: true },
+  fixMarks: {},
   params: defaultParams()
 });
 
 const VIEWS = ['route', 'clinic', 'data', 'eq'];
 
 export const THEMES = ['system', 'light', 'dark'];
+
+const stringList = list => list.filter(id => typeof id === 'string');
+
+export const hydrateApplied = (value, siteId) => {
+  if (Array.isArray(value)) {
+    const ids = stringList(value);
+    return ids.length ? Object.fromEntries([[siteId || 'main', ids]]) : {};
+  }
+  if (!value || typeof value !== 'object') return {};
+  const entries = Object.entries(value)
+    .filter(([, list]) => Array.isArray(list))
+    .map(([site, list]) => [site, stringList(list)])
+    .filter(([, ids]) => ids.length);
+  return Object.fromEntries(entries);
+};
+
+export const hydrateResources = value => {
+  const out = { space: true, budget: true, staff: true, approval: true };
+  if (value && typeof value === 'object') Object.keys(out).forEach(key => { if (typeof value[key] === 'boolean') out[key] = value[key]; });
+  return out;
+};
+
+export const hydrateMarks = value => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  const sites = Object.entries(value)
+    .filter(([, fixes]) => fixes && typeof fixes === 'object' && !Array.isArray(fixes))
+    .map(([site, fixes]) => [site, Object.fromEntries(Object.entries(fixes).filter(([, mark]) => mark === 1 || mark === 2))])
+    .filter(([, fixes]) => Object.keys(fixes).length);
+  return Object.fromEntries(sites);
+};
 
 export const migrateLegacy = old => {
   const next = defaultSettings();
@@ -36,7 +70,7 @@ export const migrateLegacy = old => {
     if (old.fw[k] !== undefined) next.params[fixLetters[k]] = sanitiseValue(BY_KEY[fixLetters[k]], old.fw[k]);
   });
   if (old.season !== undefined) next.params.season = sanitiseValue(BY_KEY.season, old.season);
-  if (Array.isArray(old.applied)) next.applied = old.applied.filter(id => typeof id === 'string');
+  next.applied = hydrateApplied(old.applied, 'main');
   return next;
 };
 
@@ -60,15 +94,31 @@ export const hydrateSettings = stored => {
   if (THEMES.includes(stored.theme)) out.theme = stored.theme;
   if (['route', 'clinic'].includes(stored.dataModel)) out.dataModel = stored.dataModel;
   if (['cards', 'table'].includes(stored.dataLayout)) out.dataLayout = stored.dataLayout;
-  if (typeof stored.dataTable === 'string') out.dataTable = stored.dataTable;
+  out.dataTable = TABLE_NAMES.includes(stored.dataTable) ? stored.dataTable : TABLE_NAMES.find(name => TABLES[name].view === out.dataModel) || base.dataTable;
   if (typeof stored.patientId === 'string') out.patientId = stored.patientId;
+  if (typeof stored.ledgerNames === 'boolean') out.ledgerNames = stored.ledgerNames;
   if (typeof stored.siteId === 'string') out.siteId = stored.siteId;
-  if (Array.isArray(stored.applied)) out.applied = stored.applied.filter(id => typeof id === 'string');
+  out.applied = hydrateApplied(stored.applied, out.siteId);
+  out.resources = hydrateResources(stored.resources);
+  out.fixMarks = hydrateMarks(stored.fixMarks);
   if (stored.params) out.params = paramsFromJSON(stored.params);
   return out;
 };
 
 export const serialiseSettings = settings => JSON.stringify({ ...settings, params: paramsToJSON(settings.params) });
+
+export const V2_THEME_KEY = 'meridian.theme';
+
+const readOldTheme = storage => {
+  try {
+    const raw = storage.getItem(V2_THEME_KEY);
+    if (raw === null || raw === undefined) return '';
+    const value = raw === 'light' || raw === 'dark' ? raw : JSON.parse(raw);
+    return value === 'light' || value === 'dark' ? value : '';
+  } catch (e) {
+    return '';
+  }
+};
 
 export const loadSettings = storage => {
   if (!storage) return defaultSettings();
@@ -76,7 +126,15 @@ export const loadSettings = storage => {
   if (current) return hydrateSettings(current);
   const legacy = readJson(storage, LEGACY_KEY);
   const migrated = legacy ? migrateLegacy(legacy) : defaultSettings();
-  if (legacy) {
+  let adopted = !!legacy;
+  if (!legacy) {
+    const theme = readOldTheme(storage);
+    if (theme) {
+      migrated.theme = theme;
+      adopted = true;
+    }
+  }
+  if (adopted) {
     try { storage.setItem(SETTINGS_KEY, serialiseSettings(migrated)); } catch (e) { return migrated; }
   }
   return migrated;

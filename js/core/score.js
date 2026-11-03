@@ -31,4 +31,4 @@ export const loadScore = utilisation => 1 - Math.pow(Math.min(1, utilisation), 3
 
 export const shrinkQuality = (reviews, quality, k, prior) => (reviews + k > 0 ? (reviews * quality + k * prior) / (reviews + k) : prior);
 
-export const utilisation = (lambda, backlog, servers, horizon) => (lambda * horizon + backlog + 1) / (servers * horizon);
+export const utilisation = (lambda, backlog, servers, horizon, observed = true) => ((observed ? lambda * horizon : 0) + backlog + 1) / (servers * horizon);

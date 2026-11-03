@@ -9,7 +9,7 @@ import { createEqView } from '../ui/eq-view.js';
 
 const PAYLOAD = '<img src=x onerror="window.__pwn=1">';
 
-const hostileTables = () => {
+export const hostileTables = () => {
   const t = buildSampleTables();
   const rename = (list, key) => list.map(r => ({ ...r, [key]: `${PAYLOAD} ${r[key]}` }));
   return {
@@ -23,9 +23,9 @@ const hostileTables = () => {
   };
 };
 
-const makeContext = () => {
+export const makeContext = (options = {}) => {
   const settings = defaultSettings();
-  const manager = createManager({ backend: createMemoryBackend(), getParams: () => settings.params });
+  const manager = createManager({ backend: options.backend || createMemoryBackend(), getParams: () => settings.params });
   const views = {};
   const ctx = {
     settings,
@@ -39,14 +39,15 @@ const makeContext = () => {
     navigate: () => {},
     changed: () => Object.values(views).forEach(v => v.update()),
     explainMode: () => settings.explain,
+    toast: () => {},
     views
   };
   return ctx;
 };
 
-const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+export const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 
-const waitFor = async (probe, limit = 6000) => {
+export const waitFor = async (probe, limit = 6000) => {
   const started = performance.now();
   while (performance.now() - started < limit) {
     if (probe()) return true;

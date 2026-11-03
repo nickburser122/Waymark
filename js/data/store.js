@@ -1,3 +1,4 @@
+import { fnv1a, canonical } from '../core/hash.js';
 import { buildSampleTables } from './samples.js';
 import { TABLE_NAMES } from './schema.js';
 import { validateTables } from './validate.js';
@@ -6,6 +7,7 @@ const DB_NAME = 'waymark';
 const STORE = 'datasets';
 const KEY = 'active';
 const UNDO_LIMIT = 50;
+const QUARANTINE_PREFIX = 'quarantine-';
 
 export const createMemoryBackend = () => {
   const map = new Map();
@@ -13,7 +15,8 @@ export const createMemoryBackend = () => {
     persistent: false,
     get: async key => (map.has(key) ? JSON.parse(map.get(key)) : null),
     set: async (key, value) => { map.set(key, JSON.stringify(value)); },
-    remove: async key => { map.delete(key); }
+    remove: async key => { map.delete(key); },
+    keys: async () => Array.from(map.keys())
   };
 };
 
@@ -45,13 +48,28 @@ export const createIndexedDbBackend = () => {
     persistent: true,
     get: key => run('readonly', store => store.get(key)).then(v => (v === undefined ? null : v)),
     set: (key, value) => run('readwrite', store => store.put(value, key)),
-    remove: key => run('readwrite', store => store.delete(key))
+    remove: key => run('readwrite', store => store.delete(key)),
+    keys: () => run('readonly', store => store.getAllKeys()).then(list => list.map(String))
   };
 };
 
 const sourcesOf = kind => Object.fromEntries(TABLE_NAMES.map(name => [name, kind]));
 
 const blankTables = () => Object.fromEntries(TABLE_NAMES.map(name => [name, []]));
+
+const describeChange = (before, after) => {
+  const changed = TABLE_NAMES.filter(name => before[name] !== after[name]);
+  if (changed.length === 1) {
+    const rows = (after[changed[0]] || []).length;
+    return `edit to ${changed[0]} (${rows} ${rows === 1 ? 'row' : 'rows'})`;
+  }
+  return changed.length ? `edit to ${changed.length} tables` : 'edit';
+};
+
+const isRecord = value => value !== null && typeof value === 'object' && !Array.isArray(value);
+
+const hasTableShape = tables => isRecord(tables)
+  && Object.keys(tables).every(name => Array.isArray(tables[name]) && tables[name].every(isRecord));
 
 export const createManager = ({ backend, getParams }) => {
   const listeners = new Set();
@@ -63,6 +81,8 @@ export const createManager = ({ backend, getParams }) => {
   let cache = null;
   let persisted = !!(backend && backend.persistent);
   let storageNote = '';
+  let quarantine = [];
+  let fingerprintCache = { version: -1, value: '' };
   const drafts = {};
 
   const emit = () => listeners.forEach(fn => fn(api));
@@ -70,6 +90,26 @@ export const createManager = ({ backend, getParams }) => {
   const compileKey = () => {
     const p = getParams();
     return `${version}|${p.defaultComplexity}|${p.defaultServiceCv2}|${p.defaultArrivalCv2}`;
+  };
+
+  const listBackups = async () => {
+    if (!backend || typeof backend.keys !== 'function') return [];
+    const keys = await backend.keys();
+    return keys.filter(k => k.startsWith(QUARANTINE_PREFIX)).sort();
+  };
+
+  const keepBackup = async record => {
+    const existing = await listBackups();
+    const fingerprint = JSON.stringify(record);
+    for (const key of existing) {
+      const copy = await backend.get(key);
+      if (JSON.stringify(copy) === fingerprint) return key;
+    }
+    let stamp = Date.now();
+    while (existing.includes(QUARANTINE_PREFIX + stamp)) stamp += 1;
+    const key = QUARANTINE_PREFIX + stamp;
+    await backend.set(key, record);
+    return key;
   };
 
   const persist = async () => {
@@ -84,8 +124,8 @@ export const createManager = ({ backend, getParams }) => {
     }
   };
 
-  const commit = next => {
-    undoStack.push(state);
+  const commit = (next, label = '') => {
+    undoStack.push({ state, label });
     if (undoStack.length > UNDO_LIMIT) undoStack.shift();
     redoStack = [];
     state = next;
@@ -103,14 +143,23 @@ export const createManager = ({ backend, getParams }) => {
       if (!backend) return;
       try {
         const saved = await backend.get(KEY);
-        if (saved && saved.tables && saved.version === 3) {
-          const tables = { ...blankTables(), ...saved.tables };
-          const result = validateTables(tables, getParams());
-          if (result.ok) {
+        if (saved && saved.tables) {
+          const shaped = hasTableShape(saved.tables);
+          const tables = shaped ? { ...blankTables(), ...saved.tables } : null;
+          let healthy = false;
+          if (shaped) {
+            try { healthy = saved.version === 3 && validateTables(tables, getParams()).ok; } catch (e) { healthy = false; }
+          }
+          if (!healthy) {
+            await keepBackup(saved);
+            storageNote = 'Saved data has problems. Fix them in the Data tab. A backup copy was kept.';
+          }
+          if (shaped) {
             state = { tables, sources: { ...sourcesOf('yours'), ...saved.sources }, files: saved.files || {} };
             version += 1;
           }
         }
+        quarantine = await listBackups();
         persisted = !!backend.persistent;
       } catch (e) {
         persisted = false;
@@ -125,6 +174,10 @@ export const createManager = ({ backend, getParams }) => {
     rejection: () => rejection,
     setRejection: info => { rejection = info; emit(); },
     version: () => version,
+    fingerprint: () => {
+      if (fingerprintCache.version !== version) fingerprintCache = { version, value: fnv1a(canonical(state.tables)) };
+      return fingerprintCache.value;
+    },
     compiled: () => {
       const key = compileKey();
       if (!cache || cache.key !== key) cache = { key, result: validateTables(state.tables, getParams()) };
@@ -142,42 +195,44 @@ export const createManager = ({ backend, getParams }) => {
         if (fileName) files[name] = fileName;
         else delete files[name];
       });
-      commit({ tables: candidate, sources, files });
+      commit({ tables: candidate, sources, files }, describeChange(state.tables, candidate));
       rejection = null;
       Object.keys(patch).forEach(name => { delete drafts[name]; });
       return { ok: true, result };
     },
     startFromSample: () => {
-      commit({ tables: buildSampleTables(), sources: sourcesOf('yours'), files: {} });
+      commit({ tables: buildSampleTables(), sources: sourcesOf('yours'), files: {} }, 'start from the sample data');
       Object.keys(drafts).forEach(k => delete drafts[k]);
     },
     startBlank: () => {
-      commit({ tables: blankTables(), sources: sourcesOf('yours'), files: {} });
+      commit({ tables: blankTables(), sources: sourcesOf('yours'), files: {} }, 'start with blank tables');
       Object.keys(drafts).forEach(k => delete drafts[k]);
     },
     resetToSample: () => {
-      commit({ tables: buildSampleTables(), sources: sourcesOf('sample'), files: {} });
+      commit({ tables: buildSampleTables(), sources: sourcesOf('sample'), files: {} }, 'reset to the sample data');
       Object.keys(drafts).forEach(k => delete drafts[k]);
     },
     canUndo: () => undoStack.length > 0,
     canRedo: () => redoStack.length > 0,
     undo: () => {
       if (!undoStack.length) return false;
-      redoStack.push(state);
-      state = undoStack.pop();
+      const entry = undoStack.pop();
+      redoStack.push({ state, label: entry.label });
+      state = entry.state;
       version += 1;
       persist();
       emit();
-      return true;
+      return { label: entry.label };
     },
     redo: () => {
       if (!redoStack.length) return false;
-      undoStack.push(state);
-      state = redoStack.pop();
+      const entry = redoStack.pop();
+      undoStack.push({ state, label: entry.label });
+      state = entry.state;
       version += 1;
       persist();
       emit();
-      return true;
+      return { label: entry.label };
     },
     setDraft: (name, records) => {
       const result = validateTables({ ...state.tables, [name]: records }, getParams());
@@ -200,6 +255,8 @@ export const createManager = ({ backend, getParams }) => {
       const compiled = api.compiled();
       return { kind: state.sources[name] === 'sample' ? 'sample' : 'yours', rows, issues: 0, warnings: compiled.byTable[name].warnings };
     },
+    quarantined: () => quarantine.slice(),
+    backup: async key => (backend && quarantine.includes(key) ? backend.get(key) : null),
     persisted: () => persisted,
     storageNote: () => storageNote,
     clearStorage: async () => { if (backend) await backend.remove(KEY); }

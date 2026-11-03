@@ -129,6 +129,7 @@ export const compileRouting = (tables, params, add) => {
     const multiplier = numberIn(add, 'facilities', f, i, 'price_multiplier', 0, 50, { exclusiveLow: true });
     const referrals = numberIn(add, 'facilities', f, i, 'referrals_per_day', 0, 1e6, { optional: true });
     const waitlist = numberIn(add, 'facilities', f, i, 'waitlist', 0, 1e7, { optional: true });
+    if (referrals === null && waitlist !== null && waitlist > 0) add('facilities', i, 'referrals_per_day', 'Inflow estimated as waitlist ÷ H.', 'warning');
     const quality = numberIn(add, 'facilities', f, i, 'quality', 0, 1, { optional: true });
     const reviews = numberIn(add, 'facilities', f, i, 'reviews', 0, 1e9, { optional: true, integer: true });
     if (okId && okName && okTier && coord.mode && coord.mode !== 'bad' && list.length && capacity !== null && multiplier !== null) {
@@ -208,6 +209,12 @@ const groupBySite = records => {
   return map;
 };
 
+export const FIX_NEEDS = Object.freeze(['space', 'budget', 'staff', 'approval']);
+
+export const RISK_CATEGORIES = Object.freeze(['oversight', 'information', 'alternative', 'dependency', 'bottleneck']);
+
+const CATEGORY_CODES = Object.freeze({ ctrl: 'oversight', info: 'information', alt: 'alternative', dep: 'dependency', neck: 'bottleneck' });
+
 const CLINIC_TABLES = ['stations', 'staffing', 'arrivals', 'routes', 'weak_points', 'fixes', 'fix_effects'];
 
 export const compileClinic = (tables, params, add) => {
@@ -252,6 +259,14 @@ export const compileClinic = (tables, params, add) => {
       }
       if (h !== null && a !== null && !arrivalsByHour.has(h)) arrivalsByHour.set(h, { a, cv: cv === null ? params.defaultArrivalCv2 : cv });
     });
+    const present = [...arrivalsByHour.keys()].sort((a, b) => a - b);
+    for (let i = 1; i < present.length; i++) {
+      const from = present[i - 1] + 1;
+      const to = present[i] - 1;
+      if (to < from) continue;
+      add('arrivals', hourSeen.get(present[i - 1]), 'hour', `Hours ${from === to ? from : `${from}–${to}`} had no row; treated as 0 arrivals.`, 'warning');
+      for (let h = from; h <= to; h++) arrivalsByHour.set(h, { a: 0, cv: params.defaultArrivalCv2 });
+    }
     const hours = [...arrivalsByHour.keys()].sort((a, b) => a - b);
     const servers = new Map(stations.map(s => [s.id, hours.map(() => 0)]));
     const staffSeen = new Set();
@@ -312,7 +327,13 @@ export const compileClinic = (tables, params, add) => {
       const F = rate('frequency');
       const P = rate('unpredictability');
       const D = rate('detectability');
-      if (okId && okTitle && stationIds.has(sid) && [I, F, P, D].every(v => v !== null)) weakPoints.push({ id: record.id.trim(), station: sid, title: record.title.trim(), I, F, P, D });
+      const rawCategory = String(record.category || '').trim().toLowerCase();
+      let category = CATEGORY_CODES[rawCategory] || rawCategory;
+      if (category && !RISK_CATEGORIES.includes(category)) {
+        add('weak_points', row, 'category', 'Unknown category "' + record.category + '"; treated as blank', 'warning');
+        category = '';
+      }
+      if (okId && okTitle && stationIds.has(sid) && [I, F, P, D].every(v => v !== null)) weakPoints.push({ id: record.id.trim(), station: sid, title: record.title.trim(), I, F, P, D, category });
     });
     const weakIds = new Set(part('weak_points').map(({ record }) => (record.id || '').trim()));
     const fixes = [];
@@ -321,9 +342,21 @@ export const compileClinic = (tables, params, add) => {
       const okTitle = required(add, 'fixes', record, row, 'title');
       const effort = numberIn(add, 'fixes', record, row, 'effort', 1, 3, { integer: true });
       const cost = numberIn(add, 'fixes', record, row, 'cost_k', 0, 1e7, { optional: true });
-      if (okId && okTitle && effort !== null) fixes.push({ id: record.id.trim(), title: record.title.trim(), effort, cost: cost === null ? 0 : cost });
+      const tokens = String(record.needs || '').toLowerCase().split(/[\s,;|]+/).filter(Boolean);
+      const unknown = tokens.filter(token => !FIX_NEEDS.includes(token));
+      if (unknown.length) add('fixes', row, 'needs', 'Unknown need ' + unknown.map(u => '"' + u + '"').join(', ') + '; use space, budget, staff or approval');
+      const needs = FIX_NEEDS.filter(need => tokens.includes(need));
+      const alternativeTo = String(record.alternative_to || '').trim();
+      if (okId && okTitle && effort !== null) fixes.push({ id: record.id.trim(), title: record.title.trim(), effort, cost: cost === null ? 0 : cost, needs, alternativeTo });
     });
     const fixIds = new Set(part('fixes').map(({ record }) => (record.id || '').trim()));
+    fixes.forEach(fix => {
+      if (fix.alternativeTo && (!fixIds.has(fix.alternativeTo) || fix.alternativeTo === fix.id)) {
+        const at = part('fixes').find(({ record }) => (record.id || '').trim() === fix.id);
+        if (at) add('fixes', at.row, 'alternative_to', 'alternative_to "' + fix.alternativeTo + '" is not another fix at this site; ignored', 'warning');
+        fix.alternativeTo = '';
+      }
+    });
     const effects = [];
     part('fix_effects').forEach(({ record, row }) => {
       const fix = (record.fix_id || '').trim();
@@ -347,6 +380,7 @@ export const compileClinic = (tables, params, add) => {
       if (okKind && kind === 'speed' && delta !== null && delta <= 0) add('fix_effects', row, 'delta', 'A speed change multiplies service time, so it must be above 0');
       const from = numberIn(add, 'fix_effects', record, row, 'from_hour', 0, 47, { optional: true });
       const to = numberIn(add, 'fix_effects', record, row, 'to_hour', 0, 47, { optional: true });
+      if (from !== null && to !== null && from >= to) add('fix_effects', row, 'to_hour', 'to_hour must be above from_hour (to_hour is exclusive), so this effect does nothing', 'warning');
       if (okKind && fix && delta !== null && target) effects.push({ fix, kind, target, field: kind === 'risk' ? field : '', delta, from, to });
     });
     if (!stations.length && !hours.length) return;

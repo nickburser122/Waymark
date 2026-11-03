@@ -4,7 +4,7 @@ import { SCORE_KEYS } from '../core/score.js';
 
 export const guardCell = value => {
   if (typeof value !== 'string') return value;
-  return /^[=+\-@\t]/.test(value) ? `'${value}` : value;
+  return /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
 };
 
 const round = (value, digits = 4) => (typeof value === 'number' && Number.isFinite(value) ? Number(value.toFixed(digits)) : value === Infinity ? '' : value);
@@ -17,7 +17,7 @@ const gatesText = excluded => Object.keys(excluded || {}).map(g => `${g} ${exclu
 
 export const batchCsv = batch => {
   const header = ['patient_id', 'name', 'urgency', 'plan', 'ttc_days', 'travel_km', 'wait_days', 'cost', 'score', 'margin']
-    .concat(SCORE_KEYS.map(k => `s_${k}`), SCORE_KEYS.map(k => `p_${k}`), ['gates_failed', 'reason']);
+    .concat(SCORE_KEYS.map(k => `s_${k}`), SCORE_KEYS.map(k => `p_${k}`), ['gates_failed', 'blocked_needs', 'reason']);
   const rows = batch.results.map(r => {
     const s = r.summary;
     const subs = SCORE_KEYS.map(k => (r.s ? round(r.s[k]) : ''));
@@ -26,18 +26,18 @@ export const batchCsv = batch => {
       r.id, r.name, URGENCY_NAMES[r.urgency], r.stops.map(stop => stop.id).join('→'),
       s ? round(s.ttc) : '', s ? round(s.km, 1) : '', s ? round(s.wait) : '', s ? round(s.cost, 2) : '',
       s ? round(s.score) : '', r.margin === null || r.margin === undefined ? '' : round(r.margin),
-      ...subs, ...parts, gatesText(r.excluded), r.reason
+      ...subs, ...parts, gatesText(r.excluded), r.blocked && r.blocked.needs ? r.blocked.needs.join(' ') : '', r.reason
     ];
   });
-  return csvText([header, ...rows]);
+  return csvText([header, ...rows], { bom: true });
 };
 
-const PLAN_HEADER = ['site', 'rank', 'fix_id', 'title', 'ΔR', 'ΔPMW', 'effort', 'cost_k', 'priority', 'cumulative_cost_k'];
+const PLAN_HEADER = ['site', 'rank', 'fix_id', 'title', 'delta_R', 'delta_PMW', 'effort', 'cost_k', 'priority', 'cumulative_cost_k', 'phase', 'feasible', 'blocked_by'];
 
 export const plansCsv = plans => {
   const rows = [];
-  plans.forEach(({ siteId, steps }) => steps.forEach(step => rows.push([siteId, step.rank, step.fix.id, step.fix.title, round(step.dR, 3), round(step.dPMW, 1), step.effort, step.cost, round(step.priority, 4), step.cumulative])));
-  return csvText([PLAN_HEADER, ...rows]);
+  plans.forEach(({ siteId, steps }) => steps.forEach(step => rows.push([siteId, step.rank, step.fix.id, step.fix.title, round(step.dR, 3), round(step.dPMW, 1), step.effort, step.cost, round(step.priority, 4), step.cumulative, step.phase || '', step.feasible === false ? 'no' : 'yes', (step.blockedBy || []).join('; ')])));
+  return csvText([PLAN_HEADER, ...rows], { bom: true });
 };
 
 export const planCsv = (siteId, steps) => plansCsv([{ siteId, steps }]);

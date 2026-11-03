@@ -1,4 +1,4 @@
-id,station_id,title,impact,frequency,unpredictability,detectability
-w1,rec,Single queue for new + returning,3,5,1,2
-w2,tri,Triage nurse covers ward round 10–11,4,4,2,3
-w3,rcd,Paper files not found,4,4,4,4
+id,station_id,title,impact,frequency,unpredictability,detectability,category
+w1,rec,Single queue for new + returning,3,5,1,2,bottleneck
+w2,tri,Triage nurse covers ward round 10–11,4,4,2,3,oversight
+w3,rcd,Paper files not found,4,4,4,4,information

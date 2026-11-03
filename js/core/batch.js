@@ -1,5 +1,5 @@
 import { SCORE_KEYS, normaliseWeights } from './score.js';
-import { evalCell, preparePatient, planSplit, summarisePlan, partsOf, rankRows } from './route.js';
+import { evalCell, preparePatient, planSplit, planSplitNearest, summarisePlan, partsOf, rankRows, confidenceLabel } from './route.js';
 import { compareText } from './stats.js';
 
 const GATE_NAMES = ['covers', 'load', 'reach', 'deadline', 'capacity'];
@@ -13,7 +13,9 @@ const excludedCounts = rows => {
   return out;
 };
 
-const aggregate = (model, results) => {
+const TIERS = ['public', 'contracted', 'private'];
+
+const aggregate = (model, results, assigned) => {
   const placed = results.filter(r => r.status !== 'unplaced');
   const n = placed.length || 1;
   let km = 0;
@@ -22,16 +24,30 @@ const aggregate = (model, results) => {
   let cost = 0;
   let pub = 0;
   let near = 0;
+  const tierMix = { public: 0, contracted: 0, private: 0 };
   placed.forEach(r => {
     km += r.summary.km;
     ttc += r.summary.ttc;
     wait += r.summary.wait;
     cost += r.summary.cost;
     if (r.stops.every(s => s.row.facility.tier === 'public')) pub += 1;
-    r.stops.forEach(s => { if (s.row.load >= model.cfg.nearFull) near += 1; });
+    r.stops.forEach(s => {
+      if (s.row.load >= model.cfg.nearFull) near += 1;
+      if (TIERS.includes(s.row.facility.tier)) tierMix[s.row.facility.tier] += 1;
+    });
   });
+  const horizon = model.cfg.horizon;
+  const publicRoom = model.facilities.reduce((a, f) => (f.tier === 'public' ? a + Math.max(0, f.capacity * horizon - f.inflow - f.waitlist) : a), 0);
+  const after = model.facilities.map((f, fi) => (f.capacity > 0 ? (f.inflow + f.waitlist + assigned[fi]) / (f.capacity * horizon) : 1));
+  const meanAfter = after.length ? after.reduce((a, b) => a + b, 0) / after.length : 0;
+  const loadSpread = after.length ? Math.sqrt(after.reduce((a, b) => a + (b - meanAfter) * (b - meanAfter), 0) / after.length) : 0;
   return {
+    totalCost: cost,
+    publicSlotsUsed: publicRoom > 0 ? tierMix.public / publicRoom : 0,
+    loadSpread,
+    tierMix,
     placed: placed.length,
+    split: placed.filter(r => r.status === 'split').length,
     unplaced: results.length - placed.length,
     avgKm: km / n,
     avgTtc: ttc / n,
@@ -87,13 +103,13 @@ export const routeBatch = (model, patients, options = {}) => {
       s: top.s,
       margin,
       excluded: excludedCounts(rows),
-      reason: margin === null ? 'only option' : margin > cfg.marginClear ? 'clear lead' : margin > cfg.marginModerate ? 'moderate lead' : 'near tie'
+      reason: confidenceLabel(margin, 1, cfg)
     });
   };
 
   const placeDeferred = pp => {
     const rows = evalAll(pp);
-    const ranked = rankRows(rows);
+    const ranked = rankRows(rows, cfg.publicLock);
     if (ranked.length) {
       placeSingle(pp, rows, ranked);
       return;
@@ -110,7 +126,7 @@ export const routeBatch = (model, patients, options = {}) => {
         s: null,
         margin: null,
         excluded: excludedCounts(rows),
-        reason: 'split plan'
+        reason: 'Split plan'
       });
     } else {
       record(pp, {
@@ -131,49 +147,125 @@ export const routeBatch = (model, patients, options = {}) => {
     const deferred = [];
     group.forEach(pp => {
       const rows = evalAll(pp);
-      const ranked = rankRows(rows);
+      const ranked = rankRows(rows, cfg.publicLock);
       if (ranked.length) placeSingle(pp, rows, ranked);
       else deferred.push(pp);
     });
     return deferred;
   };
 
+  const heapBefore = (x, y) => x.regret > y.regret || (x.regret === y.regret && x.q < y.q);
+
+  const heapPush = (heap, item) => {
+    heap.push(item);
+    let i = heap.length - 1;
+    while (i > 0) {
+      const parent = (i - 1) >> 1;
+      if (!heapBefore(heap[i], heap[parent])) break;
+      const tmp = heap[i];
+      heap[i] = heap[parent];
+      heap[parent] = tmp;
+      i = parent;
+    }
+  };
+
+  const heapPop = heap => {
+    const top = heap[0];
+    const last = heap.pop();
+    if (heap.length) {
+      heap[0] = last;
+      let i = 0;
+      for (;;) {
+        const left = 2 * i + 1;
+        const right = left + 1;
+        let next = i;
+        if (left < heap.length && heapBefore(heap[left], heap[next])) next = left;
+        if (right < heap.length && heapBefore(heap[right], heap[next])) next = right;
+        if (next === i) break;
+        const tmp = heap[i];
+        heap[i] = heap[next];
+        heap[next] = tmp;
+        i = next;
+      }
+    }
+    return top;
+  };
+
   const placeRegret = group => {
     const n = group.length;
     const deferred = [];
     if (!n) return deferred;
-    const keys = new Float64Array(n * count);
-    const feasible = new Uint8Array(n * count);
-    const stamp = new Int32Array(n * count).fill(-1);
+    const offsets = new Int32Array(n + 1);
+    for (let q = 0; q < n; q++) {
+      const covers = group[q].covers;
+      let c = 0;
+      for (let fi = 0; fi < count; fi++) if (covers[fi] === 1) c += 1;
+      offsets[q + 1] = offsets[q] + c;
+    }
+    const total = offsets[n];
+    const fiList = new Int32Array(total);
+    for (let q = 0; q < n; q++) {
+      const covers = group[q].covers;
+      let at = offsets[q];
+      for (let fi = 0; fi < count; fi++) if (covers[fi] === 1) fiList[at++] = fi;
+    }
+    const keys = new Float64Array(total);
+    const feasible = new Uint8Array(total);
+    const stamp = new Int32Array(total).fill(-1);
     const facilityStamp = new Int32Array(count);
+    const isPublic = model.facilities.map(f => f.tier === 'public');
     const best = new Int32Array(n).fill(-1);
     const second = new Int32Array(n).fill(-1);
+    const bestAt = new Int32Array(n).fill(-1);
+    const secondAt = new Int32Array(n).fill(-1);
+    const version = new Int32Array(n);
     const alive = new Uint8Array(n).fill(1);
+    const heap = [];
+    const useHeap = options.pick !== 'linear';
     let remaining = n;
+
+    const regretOf = q => (secondAt[q] < 0 ? Infinity : keys[bestAt[q]] - keys[secondAt[q]]);
 
     const scan = q => {
       let b = -1;
       let s = -1;
-      const base = q * count;
-      for (let fi = 0; fi < count; fi++) {
-        const idx = base + fi;
-        if (stamp[idx] !== facilityStamp[fi]) {
+      let pb = -1;
+      let ps = -1;
+      for (let k = offsets[q]; k < offsets[q + 1]; k++) {
+        const fi = fiList[k];
+        if (stamp[k] !== facilityStamp[fi]) {
           const cell = evalCell(model, group[q], fi, assigned[fi], true, wn);
-          feasible[idx] = cell.G ? 1 : 0;
-          keys[idx] = cell.key;
-          stamp[idx] = facilityStamp[fi];
+          feasible[k] = cell.G ? 1 : 0;
+          keys[k] = cell.key;
+          stamp[k] = facilityStamp[fi];
         }
-        if (!feasible[idx]) continue;
-        const key = keys[idx];
-        if (b < 0 || key > keys[base + b]) {
+        if (!feasible[k]) continue;
+        const key = keys[k];
+        if (b < 0 || key > keys[b]) {
           s = b;
-          b = fi;
-        } else if (s < 0 || key > keys[base + s]) {
-          s = fi;
+          b = k;
+        } else if (s < 0 || key > keys[s]) {
+          s = k;
+        }
+        if (isPublic[fi]) {
+          if (pb < 0 || key > keys[pb]) {
+            ps = pb;
+            pb = k;
+          } else if (ps < 0 || key > keys[ps]) {
+            ps = k;
+          }
         }
       }
-      best[q] = b;
-      second[q] = s;
+      if (cfg.publicLock && pb >= 0) {
+        b = pb;
+        s = ps;
+      }
+      bestAt[q] = b;
+      secondAt[q] = s;
+      best[q] = b < 0 ? -1 : fiList[b];
+      second[q] = s < 0 ? -1 : fiList[s];
+      version[q] += 1;
+      if (useHeap && b >= 0) heapPush(heap, { q, version: version[q], regret: regretOf(q) });
     };
 
     const retire = q => {
@@ -189,20 +281,32 @@ export const routeBatch = (model, patients, options = {}) => {
       }
     }
 
-    while (remaining > 0) {
+    const nextPick = () => {
+      if (useHeap) {
+        while (heap.length) {
+          const top = heapPop(heap);
+          if (alive[top.q] && top.version === version[top.q]) return top.q;
+        }
+        return -1;
+      }
       let pick = -1;
       let pickRegret = -2;
       for (let q = 0; q < n; q++) {
         if (!alive[q]) continue;
-        const regret = second[q] < 0 ? Infinity : keys[q * count + best[q]] - keys[q * count + second[q]];
+        const regret = regretOf(q);
         if (regret > pickRegret) {
           pickRegret = regret;
           pick = q;
         }
       }
+      return pick;
+    };
+
+    while (remaining > 0) {
+      const pick = nextPick();
       const pp = group[pick];
       const rows = evalAll(pp);
-      const ranked = rankRows(rows);
+      const ranked = rankRows(rows, cfg.publicLock);
       retire(pick);
       if (!ranked.length) {
         deferred.push(pp);
@@ -237,15 +341,27 @@ export const routeBatch = (model, patients, options = {}) => {
   const baselineById = new Map();
   sequence.forEach(pp => {
     let pick = null;
+    let pickPublic = null;
+    const rows = new Array(count);
     for (let fi = 0; fi < count; fi++) {
       const cell = evalCell(model, pp, fi, baselineAssigned[fi], true, wn);
+      rows[fi] = cell;
       if (!cell.G) continue;
       if (pick === null || cell.hours < pick.hours) pick = cell;
+      if (cell.facility.tier === 'public' && (pickPublic === null || cell.hours < pickPublic.hours)) pickPublic = cell;
     }
+    if (cfg.publicLock && pickPublic) pick = pickPublic;
     if (pick) {
       baselineAssigned[pick.fi] += 1;
       const stops = [{ fi: pick.fi, id: pick.id, needs: pp.needs.slice(), row: pick }];
       baselineById.set(pp.id, { id: pp.id, status: 'single', stops, summary: summarisePlan(model, pp, stops) });
+      return;
+    }
+    const split = planSplitNearest(model, pp, rows);
+    if (split.stops.length) {
+      split.stops.forEach(stop => { baselineAssigned[stop.row.fi] += 1; });
+      const stops = split.stops.map(stop => ({ fi: stop.row.fi, id: stop.row.id, needs: stop.needs, row: stop.row }));
+      baselineById.set(pp.id, { id: pp.id, status: 'split', stops, summary: summarisePlan(model, pp, split.stops) });
     } else {
       baselineById.set(pp.id, { id: pp.id, status: 'unplaced', stops: [], summary: null });
     }
@@ -256,17 +372,17 @@ export const routeBatch = (model, patients, options = {}) => {
     id: f.id,
     assigned: assigned[fi],
     capacity: f.capacity,
-    before: f.capacity > 0 ? (f.lambda * cfg.horizon + f.waitlist) / (f.capacity * cfg.horizon) : 1,
-    after: f.capacity > 0 ? (f.lambda * cfg.horizon + f.waitlist + assigned[fi]) / (f.capacity * cfg.horizon) : 1,
-    room: Math.max(0, f.capacity * cfg.horizon - f.lambda * cfg.horizon - f.waitlist)
+    before: f.capacity > 0 ? (f.inflow + f.waitlist) / (f.capacity * cfg.horizon) : 1,
+    after: f.capacity > 0 ? (f.inflow + f.waitlist + assigned[fi]) / (f.capacity * cfg.horizon) : 1,
+    room: Math.max(0, f.capacity * cfg.horizon - f.inflow - f.waitlist)
   }));
 
   return {
     results,
     sequence: sequence.map(pp => pp.id),
     loads,
-    summary: aggregate(model, results),
-    baseline: { results: baselineResults, summary: aggregate(model, baselineResults) }
+    summary: aggregate(model, results, assigned),
+    baseline: { results: baselineResults, summary: aggregate(model, baselineResults, baselineAssigned) }
   };
 };
 

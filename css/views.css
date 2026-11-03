@@ -653,6 +653,12 @@ main {
   animation: flow 3s linear infinite;
 }
 
+.edge.requested {
+  stroke: var(--rose-ink);
+  stroke-width: 2;
+  stroke-dasharray: 6 6;
+}
+
 @keyframes flow {
   to {
     stroke-dashoffset: -8.1;
@@ -1449,4 +1455,344 @@ td.m {
 
 .modelstats .mu {
   font-size: 12px;
+}
+
+.is-stale {
+  opacity: 0.5;
+  transition: opacity 0.2s;
+}
+
+.warn-note {
+  color: var(--persimmon);
+  margin: 6px 0;
+}
+
+.runid {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.runid code {
+  font-family: var(--font-mono);
+  font-size: 14px;
+}
+
+.audit-checks {
+  list-style: none;
+  margin: 0 0 10px;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.audit-check {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: baseline;
+  font-size: 13px;
+}
+
+.audit-check small {
+  color: var(--mu);
+}
+
+.audit-check .mark {
+  font-weight: 700;
+}
+
+.audit-check.ok .mark {
+  color: var(--moss-ink);
+}
+
+.audit-check.bad .mark {
+  color: var(--persimmon-ink);
+}
+
+.confirm-row {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 13px;
+}
+
+.audit-check.info .mark {
+  color: var(--sky-ink);
+}
+
+.funnel {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  font-size: 12px;
+  color: var(--mu);
+  margin: 0 0 8px;
+}
+
+.funnel b {
+  color: var(--ink);
+}
+
+.rchip {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: var(--r-pill);
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--paper2);
+  color: var(--mu);
+}
+
+.rchip.k-covers {
+  background: color-mix(in srgb, var(--rose) 22%, var(--card));
+}
+
+.rchip.k-deadline {
+  background: color-mix(in srgb, var(--persimmon) 22%, var(--card));
+}
+
+.rchip.k-reach {
+  background: color-mix(in srgb, var(--sky) 22%, var(--card));
+}
+
+.rchip.k-load {
+  background: color-mix(in srgb, var(--saffron) 26%, var(--card));
+}
+
+.rchip.k-capacity {
+  background: color-mix(in srgb, var(--iris) 22%, var(--card));
+}
+
+.gap-axis {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--mu);
+  margin: 4px 0;
+}
+
+.gap-row {
+  display: grid;
+  grid-template-columns: 78px 1fr 64px;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  margin: 3px 0;
+}
+
+.gap-track {
+  position: relative;
+  height: 12px;
+  background: var(--paper2);
+  border-radius: var(--r-pill);
+}
+
+.gap-track::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: -2px;
+  bottom: -2px;
+  width: 1px;
+  background: var(--line2);
+}
+
+.gap-track i {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: var(--k);
+  border-radius: var(--r-pill);
+}
+
+.gap-track .gap-pos {
+  left: 50%;
+}
+
+.gap-track .gap-neg {
+  right: 50%;
+}
+
+.gap-val {
+  text-align: right;
+  font-family: var(--font-mono);
+}
+
+.flip-row {
+  display: grid;
+  gap: 2px;
+  margin: 8px 0;
+}
+
+.flip-name {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.flip-strip {
+  position: relative;
+  height: 20px;
+  background: var(--paper2);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.flip-run {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  font-size: 11px;
+  color: var(--ink);
+  padding: 2px 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  box-sizing: border-box;
+  border-right: 1px solid var(--card);
+}
+
+.flip-now {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--ink);
+}
+
+.rchip.k-lock {
+  background: color-mix(in srgb, var(--lagoon) 22%, var(--card));
+}
+
+.catdot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 6px;
+  background: var(--mu);
+}
+
+.catdot.c-oversight {
+  background: var(--persimmon);
+}
+
+.catdot.c-information {
+  background: var(--sky);
+}
+
+.catdot.c-alternative {
+  background: var(--lagoon);
+}
+
+.catdot.c-dependency {
+  background: var(--iris);
+}
+
+.catdot.c-bottleneck {
+  background: var(--saffron);
+}
+
+.phase {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 8px;
+  border-radius: var(--r-pill);
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--paper2);
+}
+
+.phase-now {
+  background: color-mix(in srgb, var(--moss) 28%, var(--card));
+}
+
+.phase-next {
+  background: color-mix(in srgb, var(--saffron) 28%, var(--card));
+}
+
+.mark-btn {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line2);
+  background: var(--card);
+  color: var(--mu);
+  cursor: pointer;
+}
+
+.mark-btn.mark-1,
+.mark-btn.mark-2 {
+  color: var(--persimmon-ink);
+  border-color: var(--persimmon);
+}
+
+.blocked-why {
+  display: block;
+  color: var(--persimmon-ink);
+}
+
+.order-row {
+  display: grid;
+  grid-template-columns: 90px 1fr auto;
+  gap: 8px;
+  align-items: center;
+  font-size: 13px;
+  margin: 6px 0;
+}
+
+.tierbar-row {
+  display: grid;
+  grid-template-columns: 70px 1fr;
+  gap: 8px;
+  align-items: center;
+  margin: 6px 0;
+  font-size: 12px;
+}
+
+.tierbar {
+  display: flex;
+  height: 14px;
+  border-radius: var(--r-pill);
+  overflow: hidden;
+  background: var(--paper2);
+}
+
+.tierbar i {
+  display: block;
+  height: 100%;
+}
+
+.synth-box {
+  margin: 12px 0;
+}
+
+.curve-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 14px;
+}
+
+.curve-card h5 {
+  margin: 0 0 4px;
+  font-size: 13px;
+}
+
+.curve-svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.curve-out {
+  display: block;
+  font-size: 12px;
+  color: var(--mu);
+  margin-top: 4px;
+}
+
+.term {
+  text-decoration: underline dotted;
+  cursor: help;
 }

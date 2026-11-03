@@ -12,6 +12,13 @@ export const STAGES = [
   { id: 6, key: 'decision', color: 'rose', name: 'Decision', hint: 'route · fix plan' }
 ];
 
+export const RISK_ANCHORS = Object.freeze({
+  I: ['1 No effect on patients', '2 Minor delay or discomfort', '3 Noticeable wait or rework', '4 Care delayed or repeated', '5 Harm or a serious complaint'],
+  F: ['1 Less than once a year', '2 A few times a year', '3 About monthly', '4 About weekly', '5 Daily or more often'],
+  P: ['1 Fully predictable', '2 Mostly predictable', '3 Sometimes a surprise', '4 Often a surprise', '5 Unpredictable'],
+  D: ['1 Always caught before it affects patients', '2 Usually caught by routine checks', '3 Caught only by attentive staff', '4 Rarely caught before patients are affected', '5 Undetectable until harm or complaint']
+});
+
 export const SCORE_META = {
   T: { name: 'Time', color: 'persimmon', long: 'Time to care' },
   C: { name: 'Cost', color: 'saffron', long: 'Cost' },
@@ -62,7 +69,7 @@ export const explain = (row, params, urgency) => {
   const formula = `Score = 1·[${body}] = ${trimNum(total, 3)}`;
   const details = [
     `s_T = 2^(−TTC/τ) = 2^(−${trimNum(row.ttc, 3)}/${trimNum(tau, 3)}) = ${trimNum(s.T, 4)}`,
-    `s_C = clamp((P90 − m)/(P90 − P10)) with m = ${trimNum(f.multiplier, 3)} → ${trimNum(s.C, 4)}`,
+    `s_C = clamp((P${fmtNum(params.costHigh)} − m)/(P${fmtNum(params.costHigh)} − P${fmtNum(params.costLow)})) with m = ${trimNum(f.multiplier, 3)} → ${trimNum(s.C, 4)}`,
     `s_P = tier value of ${f.tier} = ${trimNum(s.P, 4)}`,
     `s_L = 1 − min(1, U)³ with U = ${trimNum(row.load, 3)} → ${trimNum(s.L, 4)}`,
     `s_Q = (n·q + k·q̄)/(n + k) = ${trimNum(s.Q, 4)}`,
@@ -108,8 +115,8 @@ const makeBlocks = params => {
       id: 'capacity', stage: 2, title: 'Capacity and load',
       uses: ['horizon', 'rhoMax', 'nearFull'],
       intro: ['Each site has c slots a day and a waiting list.'],
-      formula: [`ρ_f = λ_f / c_f   (must stay below ${v('rhoMax')})`, `U_f = (λ_f·H + B_f + 1) / (c_f·H),  H = ${v('horizon')} d`, `λ_f = referrals_per_day, or waitlist / H when missing`, `near full: U ≥ ${v('nearFull')}`],
-      latex: ['\\rho_f = \\lambda_f / c_f', 'U_f = \\frac{\\lambda_f H + B_f + 1}{c_f H}'],
+      formula: [`ρ_f = λ_f / c_f   (must stay below ${v('rhoMax')})`, `U_f = (λ_f·H + B_f + 1) / (c_f·H) with referrals given, else (B_f + 1) / (c_f·H),  H = ${v('horizon')} d`, `λ_f = referrals_per_day, or waitlist / H when missing (used for ρ and the queue only)`, `near full: U ≥ ${v('nearFull')}`],
+      latex: ['\\rho_f = \\lambda_f / c_f', 'U_f = \\frac{\\lambda_f H + B_f + 1}{c_f H}\\ \\text{(referrals given)},\\quad U_f = \\frac{B_f + 1}{c_f H}\\ \\text{(otherwise)}'],
       legend: [['λ_f', 'referrals per day'], ['c_f', 'slots per day'], ['B_f', 'waitlist plus patients placed this run'], ['H', 'booking horizon']]
     },
     {
@@ -131,9 +138,9 @@ const makeBlocks = params => {
     {
       id: 'gates', stage: 4, title: 'Gates',
       uses: ['reachRoutine', 'reachSoon', 'reachUrgent', 'deadlineRoutine', 'deadlineSoon', 'deadlineUrgent'],
-      intro: ['A site must pass every gate before it is scored.'],
-      formula: ['G = 1[covers needs]·1[ρ < ρ_max]·1[road ≤ R_u]·1[TTC ≤ D_u]·1[U ≤ 1 in batch]', `R (routine, soon, urgent) = ${per('reach')} km`, `D (routine, soon, urgent) = ${per('deadline')} d`],
-      latex: ['G = \\mathbf{1}[\\mathrm{covers}]\\,\\mathbf{1}[\\rho<\\rho_{max}]\\,\\mathbf{1}[\\mathrm{road}\\le R_u]\\,\\mathbf{1}[\\mathrm{TTC}\\le D_u]'],
+      intro: ['A site must pass every gate before it is scored.', 'The free-slots gate applies in Batch, and in Single when Count this week\'s capacity is on.', `When a travel table gives minutes, reach is checked against minutes / 60 · v, with v = ${v('speed')} km/h, so the reach limit stays in kilometres.`],
+      formula: ['G = 1[covers needs]·1[ρ < ρ_max]·1[road ≤ R_u]·1[TTC ≤ D_u]·1[U ≤ 1 when capacity is counted]·1[lock ⇒ tier = public ∨ no public site passes]', `R (routine, soon, urgent) = ${per('reach')} km`, `D (routine, soon, urgent) = ${per('deadline')} d`],
+      latex: ['G = \\mathbf{1}[\\mathrm{covers}]\\,\\mathbf{1}[\\rho<\\rho_{max}]\\,\\mathbf{1}[\\mathrm{road}\\le R_u]\\,\\mathbf{1}[\\mathrm{TTC}\\le D_u]\\,\\mathbf{1}[U\\le 1\\text{ when capacity is counted}]\\,\\mathbf{1}[\\mathrm{lock}\\Rightarrow \\mathrm{public}\\lor\\text{no public site passes}]'],
       legend: [['R_u', 'reach limit by urgency'], ['D_u', 'deadline by urgency']]
     },
     {
@@ -141,22 +148,22 @@ const makeBlocks = params => {
       uses: ['tauRoutine', 'tauSoon', 'tauUrgent', 'costLow', 'costHigh', 'tierPublic', 'tierContracted', 'tierPrivate', 'shrinkK', 'qualityFallback'],
       intro: ['Every sub-score runs from 0 to 1.'],
       formula: [`s_T = 2^(−TTC/τ_u),  τ (routine, soon, urgent) = ${per('tau')} d`, `s_C = clamp((P${v('costHigh')} − m)/(P${v('costHigh')} − P${v('costLow')}), 0, 1)`, `s_P = tier value: public ${v('tierPublic')}, contracted ${v('tierContracted')}, private ${v('tierPrivate')}`, 's_L = 1 − min(1, U)³', `s_Q = (n·q + k·q̄)/(n + k),  k = ${v('shrinkK')}, fallback q̄ = ${v('qualityFallback')}`, 's_K = 1 if the patient was treated there'],
-      latex: ['s_T = 2^{-\\mathrm{TTC}/\\tau_u}', 's_C = \\mathrm{clamp}\\left(\\frac{P_{90}-m}{P_{90}-P_{10}},0,1\\right)', 's_L = 1-\\min(1,U)^3', 's_Q = \\frac{nq + k\\bar q}{n+k}'],
+      latex: ['s_T = 2^{-\\mathrm{TTC}/\\tau_u}', `s_C = \\mathrm{clamp}\\left(\\frac{P_{${fmtNum(params.costHigh)}}-m}{P_{${fmtNum(params.costHigh)}}-P_{${fmtNum(params.costLow)}}},0,1\\right)`, 's_L = 1-\\min(1,U)^3', 's_Q = \\frac{nq + k\\bar q}{n+k}'],
       legend: [['τ_u', 'half-life of the time score'], ['m', 'price multiplier'], ['q̄', 'review-weighted mean quality']]
     },
     {
       id: 'score', stage: 5, title: 'Score and decision',
       uses: ['wT', 'wC', 'wP', 'wL', 'wQ', 'wK', 'marginClear', 'marginModerate', 'robustStep'],
-      intro: ['The best site has the highest weighted sum.'],
-      formula: [`Score = G·Σ ŵ_k·s_k,  ŵ = w / Σw`, `w (T, C, P, L, Q, K) = ${['wT', 'wC', 'wP', 'wL', 'wQ', 'wK'].map(v).join(', ')}`, `lead: clear above ${v('marginClear')}, moderate above ${v('marginModerate')}`, `robustness: each weight moves ±${v('robustStep')} points`],
+      intro: ['The best site has the highest weighted sum.', 'Sweeping one weight from 0 to 100 points, with the others rescaled in proportion, makes every site score a straight line, so the rank-flip breakpoints are exact, not sampled.'],
+      formula: [`Score = G·Σ ŵ_k·s_k,  ŵ = w / Σw`, `w (T, C, P, L, Q, K) = ${['wT', 'wC', 'wP', 'wL', 'wQ', 'wK'].map(v).join(', ')}`, `score_f(t) = A_f + t·(s_fk − A_f)/100,  A_f = Σ_{j≠k} (w_j / W_o)·s_fj`, `lead: clear above ${v('marginClear')}, moderate above ${v('marginModerate')}`, `robustness: each weight moves ±${v('robustStep')} points`],
       latex: ['\\mathrm{Score} = G \\sum_k \\hat w_k s_k', '\\hat w_k = w_k / \\sum_j w_j'],
       legend: [['ŵ_k', 'normalised weight'], ['G', 'gate product']]
     },
     {
       id: 'batch', stage: 6, title: 'Batch placement',
       uses: ['batchOrder', 'maxStops'],
-      intro: ['Urgent patients go first, then those with most to lose.'],
-      formula: [`order = ${params.batchOrder === 1 ? 'as listed' : 'regret'}`, 'regret = best score − second best score', `split plan: at most ${v('maxStops')} sites, greedy by score × needs covered`],
+      intro: ['Urgent patients go first, then those with most to lose.', 'Comparison KPIs: total cost adds every placed patient. Public room used is stops at public sites divided by free public slots before the run. Load spread is the standard deviation of site load after the run. The tier mix counts stops by tier.'],
+      formula: [`order = ${params.batchOrder === 1 ? 'as listed' : 'regret'}`, 'regret = best score − second best score', `split plan: at most ${v('maxStops')} sites, greedy by score × needs covered`, 'public room used = public stops / Σ_public max(0, c·H − λ·H − waitlist)', 'load spread = sd over sites of (λ·H + B_after) / (c·H)'],
       latex: ['\\mathrm{regret} = S_{(1)} - S_{(2)}'],
       legend: [['S(1), S(2)', 'best and second best score']]
     },
@@ -189,16 +196,32 @@ const makeBlocks = params => {
       uses: ['kappa', 'rhoStar', 'deltaShare', 'rhoClip', 'riskHigh', 'riskMedium'],
       intro: ['Risk is impact times likelihood, scaled by load and exposure.'],
       formula: [`R = I·F·√(P·D)·(1 + ${v('kappa')}·max(0, ρ_peak − ${v('rhoStar')}))·(1 + ${v('deltaShare')}·share)`, `ρ_peak is capped at ${v('rhoClip')}`, `high from ${v('riskHigh')}, medium from ${v('riskMedium')}`],
-      latex: ['R = I F \\sqrt{P D}\\,\\bigl(1 + \\kappa \\max(0, \\rho_{peak} - \\rho^*)\\bigr)(1 + \\delta\\, \\mathrm{share})'],
-      legend: [['I, F, P, D', 'impact, frequency, unpredictability, detectability'], ['share', 'patients passing the station / patients entering']]
+      latex: ['R = I F \\sqrt{P D}\\,\\bigl(1 + \\omega \\max(0, \\rho_{peak} - \\rho^*)\\bigr)(1 + \\delta\\, \\mathrm{share})'],
+      legend: [['I, F, P, D', 'impact, frequency, unpredictability, detectability'], ['I levels', RISK_ANCHORS.I.join('; ')], ['F levels', RISK_ANCHORS.F.join('; ')], ['P levels', RISK_ANCHORS.P.join('; ')], ['D levels (higher is harder to detect)', RISK_ANCHORS.D.join('; ')], ['share', 'patients passing the station / patients entering']]
     },
     {
       id: 'fixes', stage: 6, title: 'Fix priority',
       uses: ['fwR', 'fwO', 'fwP', 'fwB', 'alpha', 'gamma', 'costRef', 'budget'],
-      intro: ['Fixes are ranked by value per effort within budget.'],
+      intro: ['Fixes are ranked by value per effort within budget.', 'A fix effect with from_hour and to_hour applies from from_hour up to, but not including, to_hour.'],
       formula: ['V = Σ v̂_k·s_k over risk removed, overload relief, patient reach, breadth', `v (R, O, P, B) = ${['fwR', 'fwO', 'fwP', 'fwB'].map(v).join(', ')}`, `Priority = V / effort^${v('alpha')} / (1 + cost/${v('costRef')})^${v('gamma')}`, `budget B = ${v('budget')}k`],
       latex: ['\\mathrm{Priority} = \\frac{V}{\\mathrm{effort}^{\\alpha}\\,(1 + \\mathrm{cost}/C_{ref})^{\\gamma}}'],
       legend: [['V', 'weighted value of the fix'], ['C_ref', 'reference cost']]
+    },
+    {
+      id: 'override', stage: 6, title: 'Patient choice override',
+      uses: ['overrideReserve', 'overrideReachMult', 'overrideTolerance'],
+      intro: ['When a patient asks for a specific site, seven rules judge the request: clinical fit, clinical deadline, slot reserve, override reach, override token, score tolerance and cost gap.', 'A failed fit, deadline, reach or token rule denies the request. A failed reserve rule puts it on the waitlist, and a failed tolerance rule needs sign-off. A positive cost gap becomes a co-pay.'],
+      formula: [`free = c·H − (λ·H + B) must be at least reserve + 1,  reserve = max(1, ceil(c·H·${v('overrideReserve')}))`, `road ≤ R_u · ${v('overrideReachMult')}`, `loss = max(0, best score − requested score) ≤ ${v('overrideTolerance')}`, 'co-pay = max(0, price·m − plan cost)'],
+      latex: ['\\mathrm{free} - \\max(1, \\lceil c H r_{res} \\rceil) \\ge 1', '\\mathrm{road} \\le m_R R_u', '\\max(0, S_{best} - S_{req}) \\le \\Delta_{tol}'],
+      legend: [['r_res', 'share of slots held back'], ['m_R', 'reach multiplier'], ['Δ_tol', 'score tolerance']]
+    },
+    {
+      id: 'record', stage: 6, title: 'Decision record',
+      uses: [],
+      intro: ['The run ID is a short fingerprint of the engine version, the patient, every parameter in the registry, the data tables, and any capacity counting or override request.', 'The same inputs and data always give the same run ID, and changing any of them changes it.', 'The Markdown record and the local ledger carry the run ID, so a decision can be reproduced later.'],
+      formula: ['run_id = FNV-1a( engine, patient, params, data fingerprint, extras )', 'data fingerprint = FNV-1a( the eleven tables, keys sorted )'],
+      latex: ['\\mathrm{run\\_id} = \\mathrm{FNV1a}(\\mathrm{engine}, \\mathrm{patient}, \\mathrm{params}, \\mathrm{data}, \\mathrm{extras})'],
+      legend: [['FNV-1a', '32-bit hash, shown as 8 hex digits'], ['extras', 'capacity counting and override request']]
     }
   ];
 };
@@ -240,4 +263,52 @@ export const exportAll = (format, params) => {
   const head = format === 'md' ? '# Waymark equations' : format === 'tex' ? '\\documentclass{article}\n\\usepackage{amsmath}\n\\begin{document}' : 'Waymark equations';
   const tail = format === 'tex' ? '\\end{document}' : '';
   return [head, ...body, parameterSection(format, params), tail].filter(Boolean).join('\n\n');
+};
+
+export const patientNote = (result, model, patient) => {
+  const name = patient.name || patient.id;
+  const days = value => (Number.isFinite(value) ? value.toFixed(1) : '—');
+  const service = id => (model.services.has(id) ? model.services.get(id).name : id);
+  const tariff = 'The referral cost is covered at the standard tariff. If you choose another site, you may pay the difference.';
+  if (result.status === 'none') {
+    const reason = result.blocked ? result.blocked.reason : 'No site passes the safety limits';
+    return `${name}, we could not find a site that meets every safety limit right now (${reason}). A care coordinator will go through the options with you and may suggest a different route.`;
+  }
+  if (result.status === 'split') {
+    const parts = result.stops.map(stop => `${stop.row.facility.name} for ${stop.needs.map(service).join(', ')}`).join('; ');
+    const s = result.summary;
+    return `${name}, your care needs more than one site: ${parts}. Expect about ${days(s.ttc)} days until the last visit, ${Math.round(s.km)} km of travel in all, and a referral cost of about ${fmtNum(Math.round(s.cost))}. ${tariff}`;
+  }
+  const top = result.ranked[0];
+  const s = result.summary;
+  return `${name}, we recommend ${top.facility.name}. It is about ${Math.round(s.km)} km away, the expected wait is ${days(s.wait)} days, and care should start within ${days(s.ttc)} days. The referral cost is about ${fmtNum(Math.round(s.cost))}. ${tariff}`;
+};
+
+export const GLOSSARY = Object.freeze({
+  slot: 'One appointment a site can offer in a day. Capacity is slots per day.',
+  reach: 'The farthest road distance a site can be from the patient to count, set by urgency.',
+  tier: 'Whether a site is public, contracted or private.',
+  load: 'How booked a site is: the share of its slots over the horizon that are already taken.',
+  'price multiplier': 'A site price relative to the standard tariff. 1.2 means 20% above it.',
+  'split plan': 'A plan that sends one patient to several sites when no single site offers every needed service.',
+  gate: 'A pass or fail rule. A site that fails any gate is not scored.',
+  'weight points': 'Policy weights are set in points and rescaled to sum to 1, so only their proportions matter.',
+  token: 'A limited-use permission for overriding the engine, counted per quarter.',
+  regret: 'Best score minus second-best score. Patients with the most to lose are placed first in Batch.',
+  'patient-minutes': 'Patients multiplied by minutes of waiting, a measure of total queue pain.'
+});
+
+export const workedEquation = (result, params, label) => {
+  const u = result.pp.urgency;
+  const line = (row, tag) => {
+    const parts = SCORE_KEYS.map(k => `${result.wn[k].toFixed(2)}·${row.s[k].toFixed(2)}`).join(' + ');
+    if (row.G) return `${tag} ${row.facility.name}: S = 1 × [${parts}] = ${(row.total !== undefined ? row.total : SCORE_KEYS.reduce((a, k) => a + result.wn[k] * row.s[k], 0)).toFixed(3)}`;
+    return `${tag} ${row.facility.name}: S = 0 × [${parts}] = 0  (${label(row).join('; ')})`;
+  };
+  const lines = [];
+  if (result.ranked[0]) lines.push(line(result.ranked[0], 'Selected'));
+  if (result.ranked[1]) lines.push(line(result.ranked[1], 'Best rival'));
+  const excluded = result.rows.filter(r => !r.G).sort((a, b) => (a.km - b.km) || (a.fi - b.fi))[0];
+  if (excluded) lines.push(line(excluded, 'Nearest excluded'));
+  return { lines, urgency: u };
 };

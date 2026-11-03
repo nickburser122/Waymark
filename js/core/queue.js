@@ -30,8 +30,10 @@ export const waitAllenCunneen = (lambda, servers, serviceTime, caSq, csSq) => {
   return probWait / (servers / serviceTime - lambda) * (caSq + csSq) / 2;
 };
 
-export const priorityWaits = (lambda, servers, serviceTime, caSq, csSq, shares) => {
-  const total = shares.reduce((a, b) => a + b, 0) || 1;
+export const priorityWaits = (lambda, servers, serviceTime, caSq, csSq, rawShares) => {
+  const given = rawShares.reduce((a, b) => a + b, 0);
+  const shares = given > 0 ? rawShares : rawShares.map(() => 1);
+  const total = shares.reduce((a, b) => a + b, 0);
   const w0 = waitAllenCunneen(lambda, servers, serviceTime, caSq, csSq);
   if (!Number.isFinite(w0)) return shares.map(() => w0);
   if (w0 === 0) return shares.map(() => 0);

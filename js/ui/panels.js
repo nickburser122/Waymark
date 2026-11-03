@@ -1,5 +1,5 @@
 import { h, Select, Slider, NumberField, Disclosure, ChipGroup } from './components.js';
-import { entriesFor, presetMatches } from '../core/params.js';
+import { entriesFor, presetMatches, paramIssues, BY_KEY } from '../core/params.js';
 import { fmtNum } from '../core/stats.js';
 
 export const money = value => `$${Math.round(value).toLocaleString('en-US')}`;
@@ -76,7 +76,8 @@ export const advancedPanel = (ctx, view) => {
     return { entry, control, code, plain, row };
   });
   const list = h('div', { class: 'adv-list' }, rows.map(r => r.row));
-  const disclosure = Disclosure({ title: 'Advanced', content: list });
+  const issueBox = h('div', { 'aria-live': 'polite' });
+  const disclosure = Disclosure({ title: 'Advanced', content: h('div', {}, issueBox, list) });
   const sync = () => {
     const p = ctx.params();
     const formula = ctx.explainMode() === 'formula';
@@ -88,10 +89,14 @@ export const advancedPanel = (ctx, view) => {
       r.plain.textContent = r.entry.plain(value);
       r.plain.hidden = formula;
     });
+    const mine = paramIssues(p).filter(issue => issue.keys.some(k => BY_KEY[k].view === view));
+    issueBox.replaceChildren(...mine.map(issue => h('p', { class: 'note warn-note', role: 'status', text: issue.message })));
   };
   sync();
   return { el: disclosure.el, sync, disclosure };
 };
+
+export const issueNotes = params => paramIssues(params).map(issue => h('p', { class: 'note warn-note', role: 'status', text: issue.message }));
 
 export const tuneCard = (ctx, { view, weights }) => {
   const adv = advancedPanel(ctx, view);

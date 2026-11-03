@@ -4,6 +4,44 @@ import { EARTH_RADIUS_KM } from '../core/stats.js';
 
 const W = 880;
 const H = 600;
+
+const LABEL_H = 12;
+
+export const labelCandidates = (c, r, width) => {
+  const gap = 4;
+  return [
+    { x: c.x, y: c.y + r + gap + LABEL_H, anchor: 'middle', box: { x: c.x - width / 2, y: c.y + r + gap, w: width, h: LABEL_H } },
+    { x: c.x, y: c.y - r - gap, anchor: 'middle', box: { x: c.x - width / 2, y: c.y - r - gap - LABEL_H, w: width, h: LABEL_H } },
+    { x: c.x + r + gap, y: c.y + 4, anchor: 'start', box: { x: c.x + r + gap, y: c.y - LABEL_H / 2, w: width, h: LABEL_H } },
+    { x: c.x - r - gap, y: c.y + 4, anchor: 'end', box: { x: c.x - r - gap - width, y: c.y - LABEL_H / 2, w: width, h: LABEL_H } },
+    { x: c.x + r, y: c.y + r + gap + LABEL_H, anchor: 'start', box: { x: c.x + r, y: c.y + r + gap, w: width, h: LABEL_H } },
+    { x: c.x - r, y: c.y + r + gap + LABEL_H, anchor: 'end', box: { x: c.x - r - width, y: c.y + r + gap, w: width, h: LABEL_H } },
+    { x: c.x + r, y: c.y - r - gap, anchor: 'start', box: { x: c.x + r, y: c.y - r - gap - LABEL_H, w: width, h: LABEL_H } },
+    { x: c.x - r, y: c.y - r - gap, anchor: 'end', box: { x: c.x - r - width, y: c.y - r - gap - LABEL_H, w: width, h: LABEL_H } }
+  ];
+};
+
+const overlaps = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+
+export const placeLabels = (items, bounds) => {
+  const nodes = items.map(item => ({ x: item.c.x - item.r - 4, y: item.c.y - item.r - 4, w: (item.r + 4) * 2, h: (item.r + 4) * 2 }));
+  const placed = [];
+  const ordered = items.map((item, index) => ({ item, index })).sort((a, b) => (b.item.on - a.item.on) || (a.index - b.index));
+  const out = new Array(items.length);
+  ordered.forEach(({ item, index }) => {
+    const width = Math.max(24, String(item.f.name).length * 6.4);
+    const options = labelCandidates(item.c, item.r, width);
+    const free = options.find(option => {
+      const box = option.box;
+      if (box.x < 0 || box.y < 0 || box.x + box.w > bounds.w || box.y + box.h > bounds.h) return false;
+      if (nodes.some((node, ni) => ni !== index && overlaps(box, node))) return false;
+      return !placed.some(other => overlaps(box, other));
+    }) || options[0];
+    placed.push(free.box);
+    out[index] = { f: item.f, x: free.x, y: free.y, anchor: free.anchor };
+  });
+  return out;
+};
 const KM_PER_DEG = EARTH_RADIUS_KM * Math.PI / 180;
 const TIER_COLOR = { public: 'var(--pub)', contracted: 'var(--con)', private: 'var(--pri)' };
 
@@ -156,6 +194,11 @@ export const createMap = ({ onPatientMove, onFacilityToggle, onFacilityFocus, hi
         kids.push(svgEl('path', { class: 'edge glow', d }), svgEl('path', { class: 'edge best', d }));
       });
     }
+    if (view.patient && view.requested && !view.batch) {
+      const target = view.facilities.find(x => x.id === view.requested);
+      if (target && !(view.stops || []).includes(target.id)) kids.push(svgEl('path', { class: 'edge requested', d: curve(pos(view.patient), pos(target), 0.18) }));
+    }
+    const pending = [];
     view.facilities.forEach(f => {
       const c = pos(f);
       const on = best.has(f.id);
@@ -166,7 +209,7 @@ export const createMap = ({ onPatientMove, onFacilityToggle, onFacilityFocus, hi
       const g = svgEl('g', {
         class: `fnode${dim ? ' dim' : ''}`, 'data-id': f.id, tabindex: '0', role: 'button',
         'aria-label': `${f.name}, ${f.tier}, ${Math.round(used * 100)}% booked${view.previous === f.id ? ', known here' : ''}`,
-        'data-tip': `${f.name} · ${f.tier} · ${Math.round(used * 100)}% booked${view.previous === f.id ? ' · known here' : ''}${f.note ? ` · ${f.note}` : ''}`
+        'data-tip': f.tip || `${f.name} · ${f.tier} · ${Math.round(used * 100)}% booked${view.previous === f.id ? ' · known here' : ''}${f.note ? ` · ${f.note}` : ''}`
       },
       svgEl('circle', { r: 22, cx: c.x, cy: c.y, fill: 'transparent' }),
       on ? svgEl('circle', { class: 'selring', cx: c.x, cy: c.y, r: r + 8 }) : null,
@@ -184,10 +227,10 @@ export const createMap = ({ onPatientMove, onFacilityToggle, onFacilityFocus, hi
       });
       g.addEventListener('focus', () => onFacilityFocus && onFacilityFocus(f.id));
       kids.push(g);
-      if (!decorative || on) {
-        const label = svgEl('text', { class: 'flabel', x: c.x, y: c.y + r + 15, text: f.name });
-        kids.push(label);
-      }
+      if (!decorative || on) pending.push({ f, c, r, on });
+    });
+    placeLabels(pending, { w: W, h: H }).forEach(item => {
+      kids.push(svgEl('text', { class: 'flabel', x: item.x, y: item.y, 'text-anchor': item.anchor, text: item.f.name }));
     });
     if (view.patient) {
       const me = pos(view.patient);

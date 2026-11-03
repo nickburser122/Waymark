@@ -1,5 +1,6 @@
 export const MANIFEST = [
   'tests.html',
+  'css/fonts.css',
   'css/tokens.css',
   'css/components.css',
   'js/ui/escape.js',
@@ -9,6 +10,8 @@ export const MANIFEST = [
   'js/ui/components.js',
   'js/ui/panels.js',
   'js/ui/theme.js',
+  'js/ui/shortcuts.js',
+  'js/ui/curves.js',
   'js/ui/explain.js',
   'js/ui/map.js',
   'js/ui/grid.js',
@@ -25,6 +28,9 @@ export const MANIFEST = [
   'js/core/risk.js',
   'js/core/plan.js',
   'js/core/rng.js',
+  'js/core/version.js',
+  'js/core/hash.js',
+  'js/core/override.js',
   'js/core/stats.js',
   'js/data/csv.js',
   'js/data/schema.js',
@@ -32,6 +38,9 @@ export const MANIFEST = [
   'js/data/store.js',
   'js/data/samples.js',
   'js/data/export.js',
+  'js/data/record.js',
+  'js/data/synth.js',
+  'js/data/ledger.js',
   'js/data/migrate.js',
   'js/worker/batch-worker.js'
 ];

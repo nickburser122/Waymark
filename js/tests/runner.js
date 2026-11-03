@@ -35,7 +35,7 @@ export const runAll = async runner => {
   return results;
 };
 
-export const SUITES = ['./golden.js', './props.js', './ui.js', './lint.js'];
+export const SUITES = ['./golden.js', './props.js', './safety.js', './fixes.js', './audit.js', './clinic.js', './synth.js', './polish.js', './ui.js', './lint.js'];
 
 export const runSuite = async seed => {
   const runner = createRunner(seed);

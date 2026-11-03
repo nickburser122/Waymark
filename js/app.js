@@ -1,8 +1,9 @@
 import { loadSettings, saveSettings } from './data/migrate.js';
 import { applyTheme, watchSystemTheme } from './ui/theme.js';
+import { shortcutFor, nextTheme } from './ui/shortcuts.js';
 import { createManager, createIndexedDbBackend, createMemoryBackend } from './data/store.js';
 import { sanitiseValue, BY_KEY } from './core/params.js';
-import { initTooltips, h, Segmented } from './ui/components.js';
+import { initTooltips, h, Segmented, Toast } from './ui/components.js';
 import { STAGES } from './ui/explain.js';
 import { createRouteView } from './ui/route-view.js';
 import { createClinicView } from './ui/clinic-view.js';
@@ -132,13 +133,39 @@ const start = async () => {
   });
 
   window.addEventListener('hashchange', () => show(window.location.hash.slice(1)));
+  const toast = Toast();
+  document.body.append(toast.el);
+  const say = toast.show;
+  ctx.toast = say;
+
   document.addEventListener('keydown', e => {
-    if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'z') return;
-    const target = e.target;
-    if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return;
+    const action = shortcutFor(e, VIEWS.length);
+    if (!action) return;
     e.preventDefault();
-    if (e.shiftKey) manager.redo();
-    else manager.undo();
+    if (action.type === 'view') {
+      window.location.hash = VIEWS[action.index];
+    } else {
+      settings.theme = nextTheme(settings.theme);
+      applyTheme(settings.theme);
+      themeSwitch.setValue(settings.theme);
+      persist();
+      say(`Theme: ${settings.theme}`);
+    }
+  });
+
+  document.addEventListener('keydown', e => {
+    if (!(e.ctrlKey || e.metaKey)) return;
+    const key = e.key.toLowerCase();
+    const redo = (key === 'z' && e.shiftKey) || (key === 'y' && e.ctrlKey);
+    const undo = key === 'z' && !e.shiftKey;
+    if (!redo && !undo) return;
+    if (current !== 'data') return;
+    const target = e.target;
+    if (target && target.closest && target.closest('input, textarea, select, [contenteditable], .dd, .rng')) return;
+    e.preventDefault();
+    const outcome = redo ? manager.redo() : manager.undo();
+    if (outcome) say(`${redo ? 'Redid' : 'Undid'}: ${outcome.label || 'edit'}`);
+    else say(redo ? 'Nothing to redo' : 'Nothing to undo');
   });
 
   paintPipe();

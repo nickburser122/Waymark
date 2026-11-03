@@ -71,6 +71,7 @@ export const randomRouteParams = rng => {
     params.reachUrgent = rng.range(10, 70);
   }
   if (rng.chance(0.3)) params.deadlineSoon = rng.range(0.5, 10);
+  if (rng.chance(0.35)) params.publicLock = 1;
   return params;
 };
 
@@ -488,7 +489,7 @@ export const register = t => {
     t.same(settings.params.wK, 8);
     t.same(settings.params.fwO, 33);
     t.same(settings.params.season, 1.25);
-    t.same(settings.applied, ['f1', 'f4']);
+    t.same(settings.applied, { main: ['f1', 'f4'] });
     t.same(settings.view, 'clinic');
     t.same(store.get(LEGACY_KEY), legacy);
     const written = JSON.parse(store.get(SETTINGS_KEY));
