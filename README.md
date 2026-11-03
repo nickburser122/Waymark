@@ -31,6 +31,7 @@ Optional columns keep old uploads valid: `fixes.needs` (any of `space`, `budget`
 - **KPIs:** risk now, after feasible fixes, with unlimited resources, and lost to resource limits.
 - **Does the order hold?** shows the top 3 fixes under each preset, with a Use chip.
 - **Uncovered bottlenecks** lists stations at or above full load that no fix targets.
+- Selecting a weak point also lists the stations downstream of it.
 - Weak points can be filtered by category. Hover the I, F, P and D headings for the rating anchors, which are also listed in the Equations risk block.
 - Plan CSVs gain `phase`, `feasible` and `blocked_by`, and the clinic Batch table gains Blocked fixes and Lost to limits.
 
@@ -126,6 +127,7 @@ Engine version 3.1.0.
 - **Patients in Single.** The selected patient reloads when its data changes, a "More patients" picker reaches patients beyond the first eight, and the choice is remembered.
 - **Ties and order.** Facilities are sorted by id, so equal scores break by facility id. In Batch, equal regret or equal priority breaks by patient id.
 - **Regret batch speed and memory.** The regret placement keeps only the sites that cover every need for each patient and picks the next patient with a heap, instead of scanning all patients each time. Results are identical to the earlier linear scan. On a synthetic 10 000 patient by 1 000 site batch it ran in about 27 s against 39 s before, with the process using about 425 MB against 488 MB; the saving in memory depends on how many sites cover each patient's needs.
+- **Smoother repaints.** Parameter changes repaint at most once per animation frame, and settings are saved 250 ms after the last change (and when the page is hidden). The map reuses its elements, so the route dashes and the patient pulse keep running, rings animate to new loads and a focused site stays focused. Every view keeps keyboard focus, inner scroll position and page scroll across a repaint, the pipeline strip updates in place, the long batch table redraws only when its visible window moves, and tooltips hide or update when their element changes.
 - **Sentence-case confidence.** Confidence labels are "Only option", "Clear lead", "Moderate lead", "Near tie", "Split plan" and "None" everywhere, including CSV exports.
 
 ## Files

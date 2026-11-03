@@ -1,4 +1,4 @@
-import { h, DropZone, ChipGroup, Select, Segmented, NumberField, openDialog, askDialog } from './components.js';
+import { h, DropZone, ChipGroup, Select, Segmented, NumberField, openDialog, askDialog, keepState } from './components.js';
 import { html, setHtml } from './escape.js';
 import { download } from './panels.js';
 import { TABLES, TABLE_NAMES, readTable, readMultiJson, tableFromFileName, templateRows, toRecords, qualityScaleOptions, convertQuality, QUALITY_SCALE_LABELS, columnKeys } from '../data/schema.js';
@@ -427,7 +427,9 @@ export const createDataView = ctx => {
     cardsHost.replaceChildren(h('div', { class: 'stack-gap' }, h('div', { class: 'cards' }, tablesOf(settings.dataModel || 'route').map(cardFor))));
   };
 
-  const update = () => {
+  const update = () => keepState(root, paintAll);
+
+  const paintAll = () => {
     layoutSwitch.setValue(settings.dataLayout || 'cards');
     if (inTable()) {
       const stale = manager.version() !== state.seenVersion;

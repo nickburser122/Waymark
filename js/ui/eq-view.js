@@ -1,4 +1,4 @@
-import { h, CopyButton } from './components.js';
+import { h, CopyButton, keepState } from './components.js';
 import { download, issueNotes } from './panels.js';
 import { equationBlocks, exportBlock, exportAll, STAGES } from './explain.js';
 import { paramsJson } from '../data/export.js';
@@ -75,5 +75,5 @@ export const createEqView = ctx => {
     }
   };
 
-  return { el: root, update: paint, focus };
+  return { el: root, update: () => keepState(root, paint), focus };
 };

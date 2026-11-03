@@ -1796,3 +1796,16 @@ td.m {
   text-decoration: underline dotted;
   cursor: help;
 }
+
+.fnode {
+  transition: opacity 0.2s;
+}
+
+.fnode .ring {
+  transition: stroke-dasharray 0.3s ease;
+}
+
+.fnode .selring,
+.fnode .body {
+  transition: opacity 0.2s;
+}

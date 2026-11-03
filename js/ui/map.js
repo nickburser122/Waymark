@@ -154,6 +154,76 @@ export const createMap = ({ onPatientMove, onFacilityToggle, onFacilityFocus, hi
   svg.addEventListener('pointerup', release);
   svg.addEventListener('pointercancel', release);
 
+  const pool = new Map();
+
+  const apply = (node, attrs) => {
+    Object.keys(attrs).forEach(k => {
+      const v = attrs[k];
+      if (k === 'text') { if (node.textContent !== String(v)) node.textContent = String(v); return; }
+      if (v === null || v === undefined) node.removeAttribute(k);
+      else if (node.getAttribute(k) !== String(v)) node.setAttribute(k, String(v));
+    });
+    return node;
+  };
+
+  const syncChildren = (parent, nodes) => {
+    nodes.forEach((node, i) => {
+      if (parent.children[i] !== node) parent.insertBefore(node, parent.children[i] || null);
+    });
+    while (parent.children.length > nodes.length) parent.removeChild(parent.lastElementChild);
+  };
+
+  const buildNode = id => {
+    const parts = {
+      hit: svgEl('circle', { fill: 'transparent', r: 22 }),
+      sel: svgEl('circle', { class: 'selring' }),
+      bg: svgEl('circle', { class: 'ring-bg' }),
+      ring: svgEl('circle', { class: 'ring' }),
+      body: svgEl('circle', { class: 'body' }),
+      dot: svgEl('circle', {}),
+      known: svgEl('circle', { r: 4, fill: 'var(--rose)', stroke: 'var(--card)', 'stroke-width': 2 })
+    };
+    const g = svgEl('g', { class: 'fnode', 'data-id': id, tabindex: '0', role: 'button' }, parts.hit, parts.sel, parts.bg, parts.ring, parts.body, parts.dot, parts.known);
+    g.addEventListener('click', () => onFacilityToggle && onFacilityToggle(id));
+    g.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        if (onFacilityToggle) onFacilityToggle(id);
+      }
+    });
+    g.addEventListener('focus', () => onFacilityFocus && onFacilityFocus(id));
+    return { g, parts };
+  };
+
+  const buildMarker = () => {
+    const parts = {
+      halo1: svgEl('circle', { class: 'halo', r: 12 }),
+      halo2: svgEl('circle', { class: 'halo h2', r: 12 }),
+      core: svgEl('circle', { r: 9, fill: 'var(--persimmon-ink)', stroke: 'var(--card)', 'stroke-width': 3 })
+    };
+    const g = svgEl('g', { class: 'patient', tabindex: '0', role: 'slider', 'aria-label': 'Patient location, arrow keys move it' }, parts.halo1, parts.halo2, parts.core);
+    g.addEventListener('keydown', e => {
+      const step = e.shiftKey ? 10 : 1;
+      const d = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[e.key];
+      if (!d || !onPatientMove || !currentPatient) return;
+      e.preventDefault();
+      const k = proj.toKm(currentPatient);
+      onPatientMove(proj.fromKm({ x: k.x + d[0], y: k.y + d[1] }));
+    });
+    return { g, parts };
+  };
+
+  let currentPatient = null;
+
+  const keyed = (key, make) => {
+    let item = pool.get(key);
+    if (!item) {
+      item = make();
+      pool.set(key, item);
+    }
+    return item;
+  };
+
   const render = view => {
     const decorative = !!view.decorative;
     const points = view.facilities.map(f => ({ a: view.mode === 'geo' ? f.lat : f.x, b: view.mode === 'geo' ? f.lon : f.y }));
@@ -161,21 +231,32 @@ export const createMap = ({ onPatientMove, onFacilityToggle, onFacilityFocus, hi
     (view.patients || []).forEach(p => points.push({ a: view.mode === 'geo' ? p.lat : p.x, b: view.mode === 'geo' ? p.lon : p.y }));
     proj = projection({ mode: view.mode, decorative, points: points.map(p => (view.mode === 'geo' ? { a: p.a, b: p.b } : p)) });
     const pos = e => proj.toPx(proj.toKm(e));
-    const kids = [];
+    currentPatient = view.patient || null;
+    const used = new Set();
+    const order = [];
+    const take = (key, make, attrs) => {
+      const item = keyed(key, make);
+      used.add(key);
+      if (attrs) apply(item.el || item.g, attrs);
+      order.push(item.el || item.g);
+      return item;
+    };
+    const plain = (key, tag) => take(key, () => ({ el: svgEl(tag, {}) }), null);
     if (decorative) {
       decor = decor || staticLayer();
-      kids.push(decor);
+      used.add('decor');
+      order.push(decor);
     }
     const best = new Set(view.best || []);
     if (view.patient && view.reachKm) {
       const me = pos(view.patient);
-      kids.push(svgEl('circle', { class: 'reach', cx: me.x, cy: me.y, r: view.reachKm / view.eta * proj.pxPerKm }));
+      apply(plain('reach', 'circle').el, { class: 'reach', cx: me.x, cy: me.y, r: view.reachKm / view.eta * proj.pxPerKm });
     }
     if (view.batch) {
       const maxCount = Math.max(1, ...Object.values(view.batch.counts));
-      (view.patients || []).forEach(p => {
+      (view.patients || []).forEach((p, i) => {
         const c = pos(p);
-        kids.push(svgEl('circle', { class: 'pdot', cx: c.x, cy: c.y, r: 2.2 }));
+        apply(plain(`pdot:${i}`, 'circle').el, { class: 'pdot', cx: c.x, cy: c.y, r: 2.2 });
       });
       view.facilities.forEach(f => {
         const info = view.batch.flows[f.id];
@@ -183,7 +264,7 @@ export const createMap = ({ onPatientMove, onFacilityToggle, onFacilityFocus, hi
         const a = pos(info.centroid);
         const b = pos(f);
         const width = 1.5 + 9 * Math.sqrt(info.count / maxCount);
-        kids.push(svgEl('path', { class: 'edge flowline', d: curve(a, b, 0.1), 'stroke-width': width.toFixed(1) }));
+        apply(plain(`flow:${f.id}`, 'path').el, { class: 'edge flowline', d: curve(a, b, 0.1), 'stroke-width': width.toFixed(1) });
       });
     } else if (view.patient && view.stops) {
       const me = pos(view.patient);
@@ -191,12 +272,13 @@ export const createMap = ({ onPatientMove, onFacilityToggle, onFacilityFocus, hi
         const f = view.facilities.find(x => x.id === id);
         if (!f) return;
         const d = curve(me, pos(f), i % 2 ? 0.12 : -0.12);
-        kids.push(svgEl('path', { class: 'edge glow', d }), svgEl('path', { class: 'edge best', d }));
+        apply(plain(`glow:${i}`, 'path').el, { class: 'edge glow', d });
+        apply(plain(`best:${i}`, 'path').el, { class: 'edge best', d });
       });
     }
     if (view.patient && view.requested && !view.batch) {
       const target = view.facilities.find(x => x.id === view.requested);
-      if (target && !(view.stops || []).includes(target.id)) kids.push(svgEl('path', { class: 'edge requested', d: curve(pos(view.patient), pos(target), 0.18) }));
+      if (target && !(view.stops || []).includes(target.id)) apply(plain('requested', 'path').el, { class: 'edge requested', d: curve(pos(view.patient), pos(target), 0.18) });
     }
     const pending = [];
     view.facilities.forEach(f => {
@@ -204,52 +286,33 @@ export const createMap = ({ onPatientMove, onFacilityToggle, onFacilityFocus, hi
       const on = best.has(f.id);
       const r = on ? 15 : 12;
       const circumference = 2 * Math.PI * r;
-      const used = Math.min(1, Math.max(0, f.load));
+      const load = Math.min(1, Math.max(0, f.load));
       const dim = view.dim && view.dim.has(f.id) && !on;
-      const g = svgEl('g', {
-        class: `fnode${dim ? ' dim' : ''}`, 'data-id': f.id, tabindex: '0', role: 'button',
-        'aria-label': `${f.name}, ${f.tier}, ${Math.round(used * 100)}% booked${view.previous === f.id ? ', known here' : ''}`,
-        'data-tip': f.tip || `${f.name} · ${f.tier} · ${Math.round(used * 100)}% booked${view.previous === f.id ? ' · known here' : ''}${f.note ? ` · ${f.note}` : ''}`
-      },
-      svgEl('circle', { r: 22, cx: c.x, cy: c.y, fill: 'transparent' }),
-      on ? svgEl('circle', { class: 'selring', cx: c.x, cy: c.y, r: r + 8 }) : null,
-      svgEl('circle', { class: 'ring-bg', cx: c.x, cy: c.y, r }),
-      svgEl('circle', { class: 'ring', cx: c.x, cy: c.y, r, stroke: TIER_COLOR[f.tier] || 'var(--mu)', 'stroke-dasharray': `${(circumference * used).toFixed(1)} ${circumference.toFixed(1)}`, transform: `rotate(-90 ${c.x} ${c.y})` }),
-      svgEl('circle', { class: 'body', cx: c.x, cy: c.y, r: r - 4 }),
-      svgEl('circle', { cx: c.x, cy: c.y, r: on ? 5 : 3.5, fill: TIER_COLOR[f.tier] || 'var(--mu)' }),
-      view.previous === f.id ? svgEl('circle', { cx: c.x + r - 2, cy: c.y - r + 2, r: 4, fill: 'var(--rose)', stroke: 'var(--card)', 'stroke-width': 2 }) : null);
-      g.addEventListener('click', () => onFacilityToggle && onFacilityToggle(f.id));
-      g.addEventListener('keydown', e => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          if (onFacilityToggle) onFacilityToggle(f.id);
-        }
+      const item = take(`node:${f.id}`, () => buildNode(f.id), {
+        class: `fnode${dim ? ' dim' : ''}`,
+        'aria-label': `${f.name}, ${f.tier}, ${Math.round(load * 100)}% booked${view.previous === f.id ? ', known here' : ''}`,
+        'data-tip': f.tip || `${f.name} · ${f.tier} · ${Math.round(load * 100)}% booked${view.previous === f.id ? ' · known here' : ''}${f.note ? ` · ${f.note}` : ''}`
       });
-      g.addEventListener('focus', () => onFacilityFocus && onFacilityFocus(f.id));
-      kids.push(g);
+      const parts = item.parts;
+      apply(parts.hit, { cx: c.x, cy: c.y });
+      apply(parts.sel, { cx: c.x, cy: c.y, r: r + 8, display: on ? null : 'none' });
+      apply(parts.bg, { cx: c.x, cy: c.y, r });
+      apply(parts.ring, { cx: c.x, cy: c.y, r, stroke: TIER_COLOR[f.tier] || 'var(--mu)', 'stroke-dasharray': `${(circumference * load).toFixed(1)} ${circumference.toFixed(1)}`, transform: `rotate(-90 ${c.x} ${c.y})` });
+      apply(parts.body, { cx: c.x, cy: c.y, r: r - 4 });
+      apply(parts.dot, { cx: c.x, cy: c.y, r: on ? 5 : 3.5, fill: TIER_COLOR[f.tier] || 'var(--mu)' });
+      apply(parts.known, { cx: c.x + r - 2, cy: c.y - r + 2, display: view.previous === f.id ? null : 'none' });
       if (!decorative || on) pending.push({ f, c, r, on });
     });
     placeLabels(pending, { w: W, h: H }).forEach(item => {
-      kids.push(svgEl('text', { class: 'flabel', x: item.x, y: item.y, 'text-anchor': item.anchor, text: item.f.name }));
+      apply(plain(`label:${item.f.id}`, 'text').el, { class: 'flabel', x: item.x, y: item.y, 'text-anchor': item.anchor, text: item.f.name });
     });
     if (view.patient) {
       const me = pos(view.patient);
-      const marker = svgEl('g', { class: 'patient', tabindex: '0', role: 'slider', 'aria-label': 'Patient location, arrow keys move it', 'aria-valuetext': view.patientText || '' },
-        svgEl('circle', { class: 'halo', cx: me.x, cy: me.y, r: 12 }),
-        svgEl('circle', { class: 'halo h2', cx: me.x, cy: me.y, r: 12 }),
-        svgEl('circle', { cx: me.x, cy: me.y, r: 9, fill: 'var(--persimmon-ink)', stroke: 'var(--card)', 'stroke-width': 3 }));
-      marker.addEventListener('keydown', e => {
-        const step = e.shiftKey ? 10 : 1;
-        const d = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[e.key];
-        if (!d || !onPatientMove) return;
-        e.preventDefault();
-        const k = proj.toKm(view.patient);
-        onPatientMove(proj.fromKm({ x: k.x + d[0], y: k.y + d[1] }));
-        requestAnimationFrame(() => { const m = svg.querySelector('.patient'); if (m) m.focus(); });
-      });
-      kids.push(marker);
+      const marker = take('patient', buildMarker, { 'aria-valuetext': view.patientText || '' });
+      ['halo1', 'halo2', 'core'].forEach(k => apply(marker.parts[k], { cx: me.x, cy: me.y }));
     }
-    svg.replaceChildren(...kids.filter(Boolean));
+    Array.from(pool.keys()).forEach(key => { if (!used.has(key)) pool.delete(key); });
+    syncChildren(svg, order);
     legend.hidden = false;
     hintEl.textContent = view.hint === undefined ? hint || '' : view.hint;
     el.classList.toggle('real', !decorative);

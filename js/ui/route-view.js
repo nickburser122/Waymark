@@ -1,4 +1,4 @@
-import { h, Segmented, ChipGroup, Select, NumberField, Check, CopyButton } from './components.js';
+import { h, Segmented, ChipGroup, Select, NumberField, Check, CopyButton, keepState } from './components.js';
 import { html, setHtml } from './escape.js';
 import { createMap, looksLikeSample } from './map.js';
 import { sourcePill, weightPanel, tuneCard, money, download, fmtDays, fmtPct } from './panels.js';
@@ -723,7 +723,6 @@ export const createRouteView = ctx => {
     [batchCompare, batchLoads, batchTable].forEach(el => el.classList.toggle('is-stale', updating));
   };
 
-  let virtualScroll = null;
   const paintTable = batch => {
     const rows = batch.results;
     const virtual = rows.length > VIRTUAL_FROM;
@@ -738,6 +737,7 @@ export const createRouteView = ctx => {
     const wrap = h('div', { class: 'results-wrap', tabindex: '0', role: 'region', 'aria-label': 'Batch results' });
     const table = h('table');
     wrap.append(table);
+    let lastWindow = '';
     const draw = () => {
       if (!virtual) {
         setHtml(table, html`${head}<tbody>${rows.map(rowHtml)}</tbody>`);
@@ -745,8 +745,10 @@ export const createRouteView = ctx => {
       }
       const top = Math.max(0, Math.floor(wrap.scrollTop / ROW_HEIGHT) - 8);
       const count = Math.ceil(wrap.clientHeight / ROW_HEIGHT) + 16;
+      if (`${top}:${count}` === lastWindow) return;
+      lastWindow = `${top}:${count}`;
       const slice = rows.slice(top, top + count);
-      setHtml(table, html`${head}<tbody><tr style="height:${top * ROW_HEIGHT}px"><td colspan="7" style="padding:0;border:0"></td></tr>${slice.map(rowHtml)}<tr style="height:${Math.max(0, rows.length - top - slice.length) * ROW_HEIGHT}px"><td colspan="7" style="padding:0;border:0"></td></tr></tbody>`);
+      keepState(wrap, () => setHtml(table, html`${head}<tbody><tr style="height:${top * ROW_HEIGHT}px"><td colspan="7" style="padding:0;border:0"></td></tr>${slice.map(rowHtml)}<tr style="height:${Math.max(0, rows.length - top - slice.length) * ROW_HEIGHT}px"><td colspan="7" style="padding:0;border:0"></td></tr></tbody>`));
     };
     let pending = 0;
     if (virtual) wrap.addEventListener('scroll', () => { if (!pending) pending = requestAnimationFrame(() => { pending = 0; draw(); }); });
@@ -872,7 +874,9 @@ export const createRouteView = ctx => {
     }
   };
 
-  const update = () => {
+  const update = () => keepState(root, paintAll);
+
+  const paintAll = () => {
     const compiled = manager.compiled();
     const ready = compiled.routing.ready;
     empty.hidden = ready;

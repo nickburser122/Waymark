@@ -147,4 +147,22 @@ export const register = t => {
       view.el.remove();
     }
   });
+
+  t.test('WP6 selecting a weak point lists the stations downstream of it', async () => {
+    const ctx = makeContext();
+    ctx.settings.clinicMode = 'single';
+    const view = createClinicView(ctx);
+    Object.assign(ctx.views, { clinic: view });
+    document.body.append(view.el);
+    try {
+      view.update();
+      view.el.querySelector('tr[data-id]').click();
+      await wait(30);
+      const note = Array.from(view.el.querySelectorAll('p.note')).find(p => p.textContent.startsWith('Downstream'));
+      t.ok(note, 'downstream line shown');
+      t.ok(note.textContent.includes('→') || note.textContent.includes('nothing comes after'), 'a list or an explicit none');
+    } finally {
+      view.el.remove();
+    }
+  });
 };

@@ -301,8 +301,11 @@ export const initTooltips = () => {
   document.body.append(tip);
   let timer = null;
   let target = null;
+  let watcher = null;
   const hide = () => {
     clearTimeout(timer);
+    clearInterval(watcher);
+    watcher = null;
     if (target) target.removeAttribute('aria-describedby');
     target = null;
     tip.hidden = true;
@@ -312,6 +315,13 @@ export const initTooltips = () => {
     if (!message) return;
     tip.textContent = message;
     tip.hidden = false;
+    clearInterval(watcher);
+    watcher = setInterval(() => {
+      if (!target || !target.isConnected) { hide(); return; }
+      const now = target.getAttribute('data-tip');
+      if (!now) hide();
+      else if (now !== tip.textContent) tip.textContent = now;
+    }, 200);
     const r = el.getBoundingClientRect();
     const t = tip.getBoundingClientRect();
     const left = Math.min(window.innerWidth - t.width - 8, Math.max(8, r.left + r.width / 2 - t.width / 2));
@@ -608,4 +618,37 @@ export const Toast = () => {
     timer = setTimeout(() => { el.hidden = true; }, 3500);
   };
   return { el, show };
+};
+
+const SCROLL_HOSTS = '.table-scroll, .table-wrap, .adv-list, .grid-scroll, .results-wrap';
+
+const focusKey = (el, host) => {
+  const label = el.getAttribute('aria-label') || el.getAttribute('data-id') || el.getAttribute('data-v') || el.id || (el.textContent || '').trim().slice(0, 60);
+  const same = Array.from(host.querySelectorAll(el.tagName)).filter(x => (x.getAttribute('aria-label') || x.getAttribute('data-id') || x.getAttribute('data-v') || x.id || (x.textContent || '').trim().slice(0, 60)) === label);
+  return { tag: el.tagName, label, nth: Math.max(0, same.indexOf(el)) };
+};
+
+const findKey = (host, key) => {
+  const same = Array.from(host.querySelectorAll(key.tag)).filter(x => (x.getAttribute('aria-label') || x.getAttribute('data-id') || x.getAttribute('data-v') || x.id || (x.textContent || '').trim().slice(0, 60)) === key.label);
+  return same[key.nth] || same[same.length - 1] || null;
+};
+
+export const keepState = (host, run) => {
+  const active = document.activeElement;
+  const hadFocus = !!active && active !== document.body && host.contains(active);
+  const key = hadFocus ? focusKey(active, host) : null;
+  const scrolls = Array.from(host.querySelectorAll(SCROLL_HOSTS)).map(el => ({ top: el.scrollTop, left: el.scrollLeft }));
+  const pageY = typeof window.scrollY === 'number' ? window.scrollY : 0;
+  run();
+  Array.from(host.querySelectorAll(SCROLL_HOSTS)).forEach((el, i) => {
+    if (scrolls[i] && (el.scrollTop !== scrolls[i].top || el.scrollLeft !== scrolls[i].left)) {
+      el.scrollTop = scrolls[i].top;
+      el.scrollLeft = scrolls[i].left;
+    }
+  });
+  if (hadFocus) {
+    const target = active.isConnected ? active : findKey(host, key);
+    if (target && document.activeElement !== target) target.focus({ preventScroll: true });
+  }
+  if (typeof window.scrollTo === 'function' && Math.abs((window.scrollY || 0) - pageY) > 1) window.scrollTo(0, pageY);
 };

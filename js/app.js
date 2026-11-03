@@ -32,21 +32,39 @@ const start = async () => {
   await manager.init();
   initTooltips();
 
-  const persist = () => saveSettings(storage, settings);
+  let saveTimer = null;
+  const flushSave = () => {
+    clearTimeout(saveTimer);
+    saveTimer = null;
+    saveSettings(storage, settings);
+  };
+  const persist = () => {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(flushSave, 250);
+  };
+  window.addEventListener('pagehide', flushSave);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushSave(); });
   const views = {};
   const factories = { route: createRouteView, clinic: createClinicView, data: createDataView, eq: createEqView };
   const main = document.getElementById('main');
   const pipe = document.getElementById('pipe');
   let current = VIEWS.includes(settings.view) ? settings.view : 'route';
   let pipeValues = null;
+  let paintQueued = false;
+
+  const stageButtons = STAGES.map(stage => {
+    const small = h('small');
+    const button = h('button', { type: 'button', class: 'stage', role: 'listitem', style: { '--c': `var(--${stage.color})` }, 'data-tip': `Stage ${stage.id}: open its equation` }, `${stage.id} ${stage.name}`, small);
+    button.addEventListener('click', () => ctx.navigate('eq', { stage: stage.id }));
+    return { button, small, stage };
+  });
+  pipe.replaceChildren(...stageButtons.map(item => item.button));
 
   const paintPipe = () => {
-    pipe.replaceChildren(...STAGES.map((stage, i) => {
-      const button = h('button', { type: 'button', class: 'stage', role: 'listitem', style: { '--c': `var(--${stage.color})` }, 'data-tip': `Stage ${stage.id}: open its equation` },
-        `${stage.id} ${stage.name}`, h('small', { text: pipeValues ? pipeValues[i] : stage.hint }));
-      button.addEventListener('click', () => ctx.navigate('eq', { stage: stage.id }));
-      return button;
-    }));
+    stageButtons.forEach((item, i) => {
+      const text = pipeValues ? pipeValues[i] : item.stage.hint;
+      if (item.small.textContent !== text) item.small.textContent = text;
+    });
   };
 
   const ctx = {
@@ -75,7 +93,12 @@ const start = async () => {
       else show(view);
     },
     changed: () => {
-      if (views[current]) views[current].update();
+      if (paintQueued) return;
+      paintQueued = true;
+      requestAnimationFrame(() => {
+        paintQueued = false;
+        if (views[current]) views[current].update();
+      });
     },
     explainMode: () => settings.explain
   };
@@ -128,9 +151,7 @@ const start = async () => {
   applyTheme(settings.theme);
   watchSystemTheme();
 
-  manager.subscribe(() => {
-    if (views[current]) views[current].update();
-  });
+  manager.subscribe(() => ctx.changed());
 
   window.addEventListener('hashchange', () => show(window.location.hash.slice(1)));
   const toast = Toast();

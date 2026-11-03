@@ -1,9 +1,9 @@
-import { h, Segmented, Select, Slider, NumberField, Check, ChipGroup } from './components.js';
+import { h, Segmented, Select, Slider, NumberField, Check, ChipGroup, keepState } from './components.js';
 import { html, setHtml } from './escape.js';
 import { sourcePill, weightPanel, advancedPanel, download, fmtPct } from './panels.js';
 import { explainRisk, explainFix, FIX_META, RISK_ANCHORS } from './explain.js';
 import { FIX_PRESETS, FIX_WEIGHT_KEYS } from '../core/params.js';
-import { evaluateClinic, rankFixes, autoPlan, governanceKpis, orderStability, uncoveredBottlenecks, phaseOf, MARK_LABELS, RESOURCE_KEYS } from '../core/plan.js';
+import { evaluateClinic, rankFixes, autoPlan, downstreamOf, governanceKpis, orderStability, uncoveredBottlenecks, phaseOf, MARK_LABELS, RESOURCE_KEYS } from '../core/plan.js';
 import { RISK_CATEGORIES } from '../data/validate.js';
 import { plansCsv } from '../data/export.js';
 import { fmtNum } from '../core/stats.js';
@@ -165,6 +165,8 @@ export const createClinicView = ctx => {
     if (!base.risks.some(r => r.id === state.selectedRisk)) state.selectedRisk = '';
     const sel = base.risks.find(r => r.id === state.selectedRisk);
     const rex = sel ? explainRisk(sel, params) : null;
+    const stationNames = new Map(base.flow.stations.map(st => [st.id, st.name]));
+    const downstream = sel ? downstreamOf(sel.station, site.routes).map(id => stationNames.get(id) || id) : [];
     const categoryOf = new Map(site.weakPoints.map(w => [w.id, w.category || '']));
     const shown = state.category ? base.risks.filter(r => categoryOf.get(r.id) === state.category) : base.risks;
     const tip = key => RISK_ANCHORS[key].join(' | ');
@@ -175,7 +177,8 @@ export const createClinicView = ctx => {
         <td>${categoryOf.get(r.id) ? html`<span class="catdot c-${categoryOf.get(r.id)}" data-tip="${categoryOf.get(r.id)}"></span>` : ''}<b>${r.title}</b><br><small style="color:var(--mu)">${stationName.get(r.station) || r.station}</small></td>
         <td class="m">${r.I} ${r.F} ${r.P} ${r.D}</td><td class="m">${fmtPct(Math.min(r.peak, 9.99))}</td>
         <td><span class="band ${r.band}">${r.r.toFixed(0)} ${r.band}</span></td></tr>`)}</tbody></table></div>` : html`<div class="empty">No weak points yet.</div>`}
-      ${rex ? html`<div class="explain-box">${formula ? html`<pre class="formula">${rex.formula}</pre>` : html`<ul>${rex.plain.map(s => html`<li>${s}</li>`)}</ul>`}</div>` : html`<p class="note">Select a row to see how its risk is built.</p>`}`);
+      ${rex ? html`<div class="explain-box">${formula ? html`<pre class="formula">${rex.formula}</pre>` : html`<ul>${rex.plain.map(s => html`<li>${s}</li>`)}</ul>`}</div>
+      <p class="note"><b>Downstream</b> · ${downstream.length ? downstream.join(' → ') : 'nothing comes after this station.'}</p>` : html`<p class="note">Select a row to see how its risk is built.</p>`}`);
     categoryChips.setSelected([state.category]);
     const weakHead = weakCard.querySelector('h3');
     if (weakHead) weakHead.after(categoryChips.el);
@@ -300,7 +303,9 @@ export const createClinicView = ctx => {
     ctx.setPipe([`${Math.round(total)} patients/day`, `${rows.length} sites`, `${Math.round(rows.reduce((a, r) => a + r.base.pmw, 0)).toLocaleString('en-US')} patient-min waiting`, `total risk ${rows.reduce((a, r) => a + r.base.totR, 0).toFixed(0)}`, '—', 'select a site']);
   };
 
-  const update = () => {
+  const update = () => keepState(root, paintAll);
+
+  const paintAll = () => {
     const compiled = manager.compiled();
     const ready = compiled.clinic.ready;
     empty.hidden = ready;

@@ -5,7 +5,7 @@ import { curvePoints } from '../ui/curves.js';
 import { timeScore } from '../core/score.js';
 import { createRouteView } from '../ui/route-view.js';
 import { createEqView } from '../ui/eq-view.js';
-import { makeContext, wait } from './ui.js';
+import { makeContext } from './ui.js';
 
 const hits = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
 
