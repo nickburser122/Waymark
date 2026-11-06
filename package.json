@@ -11,7 +11,8 @@
     "serve": "node tools/serve.mjs",
     "a11y": "node tools/a11y.mjs",
     "perf": "node tools/perf.mjs",
-    "profile": "node tools/profile.mjs"
+    "profile": "node tools/profile.mjs",
+    "regression": "node tools/regression.mjs"
   },
   "devDependencies": {
     "@sparticuz/chromium": "^153.0.0",

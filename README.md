@@ -93,7 +93,7 @@ Staffing may also be uploaded wide (`station_id`, then `h08`, `h09`, …). Quali
 - `localStorage` key `waymark.v3`: view, modes, explanation style, theme, data layout, applied fixes and every parameter. A `waymark.v2` key is read once and migrated, and left in place.
 - IndexedDB database `waymark`, store `datasets`, key `active`: the eleven tables, where each came from and the uploaded file names. If it is unavailable, work continues in memory and the Data tab says so.
 - IndexedDB keys `quarantine-<timestamp>`: a copy of saved data that failed validation on load. The data stays editable in the Data tab, and each copy can be downloaded as JSON. They are never deleted automatically.
-- IndexedDB key `ledger`: the decision ledger (newest first, at most 5 000 entries, no patient names unless switched on in the Audit card). An older ledger in `localStorage` key `waymark.ledger.v1` is moved over the first time the Audit card loads and then removed. The ledger can be exported as CSV or JSON and a JSON export can be imported back; duplicates are skipped by run ID and malformed rows are dropped.
+- IndexedDB key `ledger`: the decision ledger (newest first, at most 5 000 entries, no patient names unless switched on in the Audit card). An older ledger in `localStorage` key `waymark.ledger.v1` is moved over the first time the Audit card loads and then removed. If IndexedDB is unavailable (for example in some private-browsing modes) the ledger stays in that `localStorage` key instead and nothing is moved or deleted. The ledger can be exported as CSV or JSON and a JSON export can be imported back; duplicates are skipped by run ID and malformed rows are dropped.
 - Backups of saved data that failed validation can be downloaded or deleted one at a time or all at once in the Data tab, each after a confirmation.
 - Old keys `meridian.state`, `meridian.ledger` and `waymark.clinic` from the v2 app may still exist in the browser. They are ignored, because their models do not map to v3. `meridian.theme` is read once, when no v3 or v2 settings exist, and all old keys are left in place.
 - `settings.resources` and `settings.fixMarks` (`{ siteId: { fixId: 1 | 2 } }`) hold the clinic governance switches and marks.
@@ -105,6 +105,7 @@ Staffing may also be uploaded wide (`station_id`, then `h08`, `h09`, …). Quali
 
 - `npm test` runs the whole suite in Node with jsdom. Pass a seed: `npm test -- 123`.
 - `npm run test:browser` runs `tests.html` in a real headless Chromium for one or more seeds (`npm run test:browser -- 123,7`), then checks that fonts load, nothing leaves the app, the route animation keeps running across a repaint and the slider keeps focus.
+- `npm run regression` drives the real app in Chromium: dragging and keyboard-moving the patient, selecting a site on the map, the pipeline buttons, and that theme, weights and the ledger survive a reload.
 - `npm run a11y` runs axe-core in Chromium over every view in light and dark, plus Formula mode, Batch and the Data grid, and fails on any serious or critical finding.
 - `npm run perf` drags sliders in Chromium and reports frame times and long tasks for Routing and Clinic.
 - `npm run profile -- route 0` CPU-profiles a slider drag in Chromium and lists the functions with the most self time (view name, then the index of the slider).

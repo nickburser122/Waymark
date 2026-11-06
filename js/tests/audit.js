@@ -11,16 +11,11 @@ import { createManager, createMemoryBackend } from '../data/store.js';
 import { decisionRecord, mdCell } from '../data/record.js';
 import { loadLedger, saveLedger, addEntry, ledgerCsv, sanitiseEntry, normaliseLedger, parseLedgerJson, mergeLedgers, LEDGER_MAX, LEDGER_KEY } from '../data/ledger.js';
 import { createRouteView } from '../ui/route-view.js';
-import { makeContext, wait, waitFor } from './ui.js';
+import { makeContext, wait, waitFor, durableBackend, memoryStorage } from './ui.js';
 
 const routing = (tables, params) => {
   const result = validateTables(tables, params);
   return { data: result.routing.data, model: prepareRouting(result.routing.data, params) };
-};
-
-const memoryStorage = () => {
-  const map = new Map();
-  return { getItem: k => (map.has(k) ? map.get(k) : null), setItem: (k, v) => { map.set(k, String(v)); }, removeItem: k => { map.delete(k); } };
 };
 
 export const register = t => {
@@ -341,7 +336,7 @@ export const register = t => {
 
   t.test('LEDGER an old localStorage ledger is migrated into the store and removed', async () => {
     saveLedger(window.localStorage, [sampleEntry(8), sampleEntry(9, '2026-05-05T00:00:00.000Z')]);
-    const ctx = makeContext();
+    const ctx = makeContext({ backend: durableBackend() });
     ctx.settings.routeMode = 'single';
     const view = createRouteView(ctx);
     Object.assign(ctx.views, { route: view });
@@ -390,5 +385,45 @@ export const register = t => {
 
   t.test('LEDGER keeps up to five thousand entries', () => {
     t.same(LEDGER_MAX, 5000);
+  });
+
+  t.test('LEDGER without durable storage the ledger stays in localStorage and nothing is deleted', async () => {
+    const storage = memoryStorage();
+    const manager = createManager({ backend: createMemoryBackend(), getParams: defaultParams, ledgerStorage: storage });
+    t.same(manager.ledgerDurable(), false);
+    t.same(await manager.readLedger(), null);
+    t.ok(await manager.writeLedger([sampleEntry(1)]), 'write reports success when localStorage works');
+    t.same(JSON.parse(storage.getItem(LEDGER_KEY)).map(e => e.id), ['r1'], 'written to localStorage');
+    const reopened = createManager({ backend: createMemoryBackend(), getParams: defaultParams, ledgerStorage: storage });
+    t.same((await reopened.readLedger()).map(e => e.id), ['r1'], 'a fresh session reads it back');
+    const bare = createManager({ backend: createMemoryBackend(), getParams: defaultParams });
+    t.same(await bare.writeLedger([sampleEntry(2)]), false, 'with no storage at all the write is reported as failed');
+    t.same((await bare.readLedger()).map(e => e.id), ['r2'], 'but it still works for this session');
+    const failing = { getItem: () => null, setItem: () => { throw new Error('quota'); } };
+    t.same(await createManager({ backend: createMemoryBackend(), getParams: defaultParams, ledgerStorage: failing }).writeLedger([sampleEntry(3)]), false, 'a full localStorage is reported');
+    const durable = createManager({ backend: durableBackend(), getParams: defaultParams, ledgerStorage: storage });
+    t.same(durable.ledgerDurable(), true);
+    await durable.writeLedger([sampleEntry(4)]);
+    t.same(JSON.parse(storage.getItem(LEDGER_KEY)).map(e => e.id), ['r1'], 'a durable store leaves localStorage alone');
+  });
+
+  t.test('LEDGER an old localStorage ledger is left in place when only memory storage is available', async () => {
+    saveLedger(window.localStorage, [sampleEntry(5)]);
+    const ctx = makeContext({ ledgerStorage: window.localStorage });
+    ctx.settings.routeMode = 'single';
+    const view = createRouteView(ctx);
+    Object.assign(ctx.views, { route: view });
+    document.body.append(view.el);
+    try {
+      view.update();
+      t.ok(await waitFor(() => view.el.querySelectorAll('.card table.tbl tbody tr').length === 1, 3000), 'the entry is shown');
+      t.ok(window.localStorage.getItem(LEDGER_KEY), 'the old copy is not deleted');
+      view.el.querySelectorAll('button').forEach(b => { if (b.textContent === 'Log decision') b.click(); });
+      await wait(80);
+      t.same(JSON.parse(window.localStorage.getItem(LEDGER_KEY)).length, 2, 'new entries are saved to localStorage');
+    } finally {
+      view.el.remove();
+      window.localStorage.removeItem(LEDGER_KEY);
+    }
   });
 };

@@ -28,7 +28,7 @@ const start = async () => {
   const settings = loadSettings(storage);
   let backend;
   try { backend = createIndexedDbBackend(); } catch (e) { backend = createMemoryBackend(); }
-  const manager = createManager({ backend, getParams: () => settings.params });
+  const manager = createManager({ backend, getParams: () => settings.params, ledgerStorage: storage });
   await manager.init();
   initTooltips();
 

@@ -23,9 +23,16 @@ export const hostileTables = () => {
   };
 };
 
+export const memoryStorage = () => {
+  const map = new Map();
+  return { getItem: key => (map.has(key) ? map.get(key) : null), setItem: (key, value) => { map.set(key, String(value)); }, removeItem: key => { map.delete(key); } };
+};
+
+export const durableBackend = () => ({ ...createMemoryBackend(), persistent: true });
+
 export const makeContext = (options = {}) => {
   const settings = defaultSettings();
-  const manager = createManager({ backend: options.backend || createMemoryBackend(), getParams: () => settings.params });
+  const manager = createManager({ backend: options.backend || createMemoryBackend(), getParams: () => settings.params, ledgerStorage: options.ledgerStorage || memoryStorage() });
   const views = {};
   const ctx = {
     settings,

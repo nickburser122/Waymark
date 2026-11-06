@@ -1,4 +1,5 @@
 import { fnv1a, canonical } from '../core/hash.js';
+import { LEDGER_KEY } from './ledger.js';
 import { buildSampleTables } from './samples.js';
 import { TABLE_NAMES } from './schema.js';
 import { validateTables } from './validate.js';
@@ -72,7 +73,7 @@ const isRecord = value => value !== null && typeof value === 'object' && !Array.
 const hasTableShape = tables => isRecord(tables)
   && Object.keys(tables).every(name => Array.isArray(tables[name]) && tables[name].every(isRecord));
 
-export const createManager = ({ backend, getParams }) => {
+export const createManager = ({ backend, getParams, ledgerStorage = null }) => {
   const listeners = new Set();
   let state = { tables: buildSampleTables(), sources: sourcesOf('sample'), files: {} };
   let rejection = null;
@@ -257,14 +258,28 @@ export const createManager = ({ backend, getParams }) => {
       const compiled = api.compiled();
       return { kind: state.sources[name] === 'sample' ? 'sample' : 'yours', rows, issues: 0, warnings: compiled.byTable[name].warnings };
     },
+    ledgerDurable: () => !!(backend && backend.persistent),
     readLedger: async () => {
-      if (!backend) return ledgerMemory;
-      try { return await backend.get(LEDGER_STORE_KEY); } catch (e) { return ledgerMemory; }
+      if (backend && backend.persistent) {
+        try { return await backend.get(LEDGER_STORE_KEY); } catch (e) { return ledgerMemory; }
+      }
+      if (ledgerStorage) {
+        try {
+          const raw = ledgerStorage.getItem(LEDGER_KEY);
+          return raw ? JSON.parse(raw) : ledgerMemory;
+        } catch (e) { return ledgerMemory; }
+      }
+      return ledgerMemory;
     },
     writeLedger: async items => {
       ledgerMemory = items;
-      if (!backend) return true;
-      try { await backend.set(LEDGER_STORE_KEY, items); return true; } catch (e) { return false; }
+      if (backend && backend.persistent) {
+        try { await backend.set(LEDGER_STORE_KEY, items); return true; } catch (e) { return false; }
+      }
+      if (ledgerStorage) {
+        try { ledgerStorage.setItem(LEDGER_KEY, JSON.stringify(items)); return true; } catch (e) { return false; }
+      }
+      return false;
     },
     deleteBackup: async key => {
       if (!backend || !quarantine.includes(key)) return false;

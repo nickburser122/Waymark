@@ -395,7 +395,9 @@ export const createRouteView = ctx => {
       ledgerLoading = (async () => {
         let list = normaliseLedger(await manager.readLedger());
         let legacy = [];
-        try { legacy = normaliseLedger(loadLedger(window.localStorage)); } catch (e) { legacy = []; }
+        if (manager.ledgerDurable()) {
+          try { legacy = normaliseLedger(loadLedger(window.localStorage)); } catch (e) { legacy = []; }
+        }
         if (legacy.length) {
           list = mergeLedgers(list, legacy).items;
           if (await manager.writeLedger(list)) removeLegacyLedger();
