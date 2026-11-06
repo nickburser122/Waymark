@@ -145,6 +145,8 @@ const EFFECT_ROWS = [
 
 export const TABLE_ORDER = ['facilities', 'services', 'patients', 'travel', 'stations', 'staffing', 'arrivals', 'routes', 'weak_points', 'fixes', 'fix_effects'];
 
+const REQUESTED_BY_PATIENT = { P001: 'ntg', P002: 'ntg', P004: 'bfh', P005: 'krh' };
+
 const FIX_NEEDS_BY_ID = { f1: 'space', f2: 'staff budget', f3: 'budget approval' };
 
 const FIX_ALTERNATIVE_BY_ID = { f3: 'f1' };
@@ -154,7 +156,7 @@ const WEAK_CATEGORY_BY_ID = { w1: 'bottleneck', w2: 'oversight', w3: 'informatio
 export const buildSampleTables = () => ({
   facilities: rows(['id', 'name', 'tier', 'x', 'y', 'services', 'capacity_per_day', 'referrals_per_day', 'waitlist', 'price_multiplier', 'quality', 'reviews'], FACILITY_ROWS.map(f => [f[0], f[1], f[2], f[3], f[4], f[5], f[6], f[7], f[8], f[9], f[10], f[11]])),
   services: rows(['id', 'name', 'base_price', 'complexity'], SERVICE_ROWS),
-  patients: rows(['id', 'name', 'x', 'y', 'needs', 'urgency', 'previous_site'], buildPatients()),
+  patients: rows(['id', 'name', 'x', 'y', 'needs', 'urgency', 'previous_site', 'requested_site'], buildPatients().map(r => r.concat(REQUESTED_BY_PATIENT[r[0]] || ''))),
   travel: [],
   stations: rows(['id', 'name', 'service_min', 'service_cv2'], STATION_ROWS),
   staffing: rows(['station_id', 'hour', 'servers'], STATION_ROWS.flatMap(st => HOURS.map((h, i) => [st[0], h, STAFFING[st[0]][i]]))),

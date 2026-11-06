@@ -58,7 +58,7 @@ export const createClinicView = ctx => {
     onChange: on => { settings.resources = { ...settings.resources, [key]: on }; state.planShown = false; ctx.persist(); update(); }
   }));
   const resCard = h('div', { class: 'card' }, h('h3', {}, 'Resources', h('span', { text: 'stage 6' })),
-    h('p', { class: 'note', text: 'Switch off a resource to block every fix that needs it.' }), ...resChecks.map(c => c.el));
+    h('p', { class: 'note', text: 'Switch off a resource to block every fix that needs it.' }), h('div', { class: 'res-list' }, resChecks.map(c => c.el)));
   const categoryChips = ChipGroup({
     label: 'Weak point category', selected: [''],
     options: [{ value: '', label: 'All' }].concat(RISK_CATEGORIES.map(c => ({ value: c, label: c[0].toUpperCase() + c.slice(1) }))),
@@ -222,7 +222,7 @@ export const createClinicView = ctx => {
       list.append(row);
       if (!isApplied) {
         const mark = markOf(site, fix.id);
-        row.append(h('button', { type: 'button', class: `mark-btn mark-${mark}`, text: MARK_LABELS[mark], 'aria-label': `Mark ${fix.title}: ${MARK_LABELS[mark]}. Activate to change.`, onClick: () => cycleMark(site, fix.id) }));
+        label.append(h('button', { type: 'button', class: `mark-btn mark-${mark}`, text: MARK_LABELS[mark], 'aria-label': `Mark ${fix.title}: ${MARK_LABELS[mark]}. Activate to change.`, onClick: () => cycleMark(site, fix.id) }));
       }
       if (!isApplied && state.openFix === fix.id) {
         const ex = explainFix(item, params);
@@ -265,7 +265,7 @@ export const createClinicView = ctx => {
     const uncovered = uncoveredBottlenecks(flow, site);
     uncoveredCard.hidden = !uncovered.length;
     uncoveredCard.replaceChildren(...(uncovered.length ? [h('h3', {}, 'Uncovered bottlenecks', h('span', { text: String(uncovered.length) })),
-      ...uncovered.map(u => h('p', { class: 'note', text: `${u.name} peaks at ${fmtPct(Math.min(u.peakRho, 9.99))} at ${clockText(u.start)}; no fix in the list targets it.` }))] : []));
+      ...uncovered.map(u => h('p', { class: 'note', text: `${u.name} peaks at ${u.peakRho > 2 ? '>200%' : fmtPct(u.peakRho)} at ${clockText(u.start)}; no fix in the list targets it.` }))] : []));
     const top = ranking.items[0];
     ctx.setPipe([
       `${Math.round(flow.entryDaily)} patients/day`,

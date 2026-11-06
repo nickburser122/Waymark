@@ -247,8 +247,18 @@ export const createDataView = ctx => {
         h('button', { type: 'button', class: 'btn quiet', text: 'Download backup JSON', onClick: async () => {
           const record = await manager.backup(key);
           if (record) download(`waymark-backup-${key.replace(/^quarantine-/, '')}.json`, JSON.stringify(record, null, 2), 'application/json');
+        } }),
+        h('button', { type: 'button', class: 'btn quiet', text: 'Delete', 'aria-label': `Delete the backup from ${backupLabel(key)}`, onClick: async () => {
+          const ok = await askDialog({ title: 'Delete this backup?', message: 'The copy of the saved data will be removed from this browser. Download it first if you may need it.', confirmLabel: 'Delete backup', danger: true });
+          if (ok) await manager.deleteBackup(key);
         } })));
     });
+    if (manager.quarantined().length > 1) {
+      backupBox.append(h('button', { type: 'button', class: 'btn quiet', text: 'Delete all backups', onClick: async () => {
+        const ok = await askDialog({ title: 'Delete all backups?', message: `All ${manager.quarantined().length} backup copies will be removed from this browser.`, confirmLabel: 'Delete all', danger: true });
+        if (ok) await manager.deleteAllBackups();
+      } }));
+    }
   };
 
   const paintReport = () => {

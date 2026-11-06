@@ -58,6 +58,8 @@ With the lock on, private and contracted sites are used only when no public site
 
 ## Patient choice override
 
+`patients.requested_site` is an optional column naming the site the patient asked for (unknown ids raise a warning and are ignored). Single preselects it for that patient. Batch judges every request with the same seven rules, against the final placements and without using the override token, then reports the tally under the comparison (same, approved, co-pay, sign-off, waitlisted, denied, and total co-pays). Each batch row shows the verdict as a tag, and the batch CSV gains `requested_site`, `override_outcome` and `override_copay`. Requests never change where anyone is placed.
+
 In Single, "Patient asks for" judges a requested site with seven rules: clinical fit, clinical deadline, slot reserve, override reach, override token, score tolerance and cost gap. The outcome is one of same, approved, co-pay, sign-off, waitlist or denied, using the three `override*` parameters. The request and token are part of the run ID and the decision record, are not saved between sessions, and do not affect Batch.
 
 ## Entry paths
@@ -91,10 +93,37 @@ Staffing may also be uploaded wide (`station_id`, then `h08`, `h09`, …). Quali
 - `localStorage` key `waymark.v3`: view, modes, explanation style, theme, data layout, applied fixes and every parameter. A `waymark.v2` key is read once and migrated, and left in place.
 - IndexedDB database `waymark`, store `datasets`, key `active`: the eleven tables, where each came from and the uploaded file names. If it is unavailable, work continues in memory and the Data tab says so.
 - IndexedDB keys `quarantine-<timestamp>`: a copy of saved data that failed validation on load. The data stays editable in the Data tab, and each copy can be downloaded as JSON. They are never deleted automatically.
-- `localStorage` key `waymark.ledger.v1`: the decision ledger (newest first, at most 200, no patient names unless switched on in the Audit card).
+- IndexedDB key `ledger`: the decision ledger (newest first, at most 5 000 entries, no patient names unless switched on in the Audit card). An older ledger in `localStorage` key `waymark.ledger.v1` is moved over the first time the Audit card loads and then removed. The ledger can be exported as CSV or JSON and a JSON export can be imported back; duplicates are skipped by run ID and malformed rows are dropped.
+- Backups of saved data that failed validation can be downloaded or deleted one at a time or all at once in the Data tab, each after a confirmation.
 - Old keys `meridian.state`, `meridian.ledger` and `waymark.clinic` from the v2 app may still exist in the browser. They are ignored, because their models do not map to v3. `meridian.theme` is read once, when no v3 or v2 settings exist, and all old keys are left in place.
 - `settings.resources` and `settings.fixMarks` (`{ siteId: { fixId: 1 | 2 } }`) hold the clinic governance switches and marks.
 - `settings.applied` is stored per site, as `{ siteId: [fixId, …] }`. An older flat list migrates to the `main` site.
+
+## Development
+
+`npm install` pulls the dev dependencies only; the app itself has no build step and no runtime dependencies.
+
+- `npm test` runs the whole suite in Node with jsdom. Pass a seed: `npm test -- 123`.
+- `npm run test:browser` runs `tests.html` in a real headless Chromium for one or more seeds (`npm run test:browser -- 123,7`), then checks that fonts load, nothing leaves the app, the route animation keeps running across a repaint and the slider keeps focus.
+- `npm run a11y` runs axe-core in Chromium over every view in light and dark, plus Formula mode, Batch and the Data grid, and fails on any serious or critical finding.
+- `npm run perf` drags sliders in Chromium and reports frame times and long tasks for Routing and Clinic.
+- `npm run profile -- route 0` CPU-profiles a slider drag in Chromium and lists the functions with the most self time (view name, then the index of the slider).
+- `npm run screenshots` captures every view at desktop and phone width in light and dark into `screenshots/` and fails on sideways scrolling or console errors.
+- `npm run serve` serves the folder on port 8080.
+- `.github/workflows/ci.yml` runs all of the above on every push.
+
+## Decisions and assumptions
+
+Choices made where the port plan left a question open. Each is easy to change:
+
+- **Override reserve.** A request may not take the last `max(1, ceil(slots × override reserve))` slots of a site. Parameter `overrideReserve`, default 0.1.
+- **Override reach and tolerance.** Requests may reach `overrideReachMult` times the normal reach (1.5) and are approved without sign-off up to `overrideTolerance` below the best score (0.15).
+- **Override token.** One use per quarter is tracked by a switch in Single only. Batch never spends it.
+- **Requests and placement.** A request never changes where Batch places a patient. It is judged afterwards against the final loads.
+- **Ledger privacy.** Patient names are not stored in the ledger unless the switch in the Audit card is on.
+- **Public-first.** It is a separate switch, not part of the Public-first weight preset, so presets only ever change weights.
+- **Waitlist.** With a blank referral rate the booked share is `(waitlist + 1) / (slots × horizon)` and the estimated inflow only drives the queue wait.
+- **Fonts.** Self-hosted variable fonts, Latin plus Latin Extended (and Greek for the mono face).
 
 ## Tests
 
@@ -128,6 +157,7 @@ Engine version 3.1.0.
 - **Ties and order.** Facilities are sorted by id, so equal scores break by facility id. In Batch, equal regret or equal priority breaks by patient id.
 - **Regret batch speed and memory.** The regret placement keeps only the sites that cover every need for each patient and picks the next patient with a heap, instead of scanning all patients each time. Results are identical to the earlier linear scan. On a synthetic 10 000 patient by 1 000 site batch it ran in about 27 s against 39 s before, with the process using about 425 MB against 488 MB; the saving in memory depends on how many sites cover each patient's needs.
 - **Smoother repaints.** Parameter changes repaint at most once per animation frame, and settings are saved 250 ms after the last change (and when the page is hidden). The map reuses its elements, so the route dashes and the patient pulse keep running, rings animate to new loads and a focused site stays focused. Every view keeps keyboard focus, inner scroll position and page scroll across a repaint, the pipeline strip updates in place, the long batch table redraws only when its visible window moves, and tooltips hide or update when their element changes.
+- **Clinic speed.** Clinic simulations are cached per site, set of applied fixes and every parameter except the four fix weights, so moving a fix weight or switching presets no longer re-runs the flow model, and the Does-the-order-hold card reuses the same results. Cached results are identical to cold runs.
 - **Sentence-case confidence.** Confidence labels are "Only option", "Clear lead", "Moderate lead", "Near tie", "Split plan" and "None" everywhere, including CSV exports.
 
 ## Files
@@ -140,7 +170,7 @@ Engine version 3.1.0.
 
 ## Fonts
 
-The three families are served from `fonts/` as variable `woff2` files (Latin subset), declared in `css/fonts.css`, so the app makes no font requests to other hosts and works offline. They are Instrument Sans, Fraunces (with its optical size axis) and JetBrains Mono, taken from the `@fontsource-variable` packages, and each is under the SIL Open Font License 1.1; the licence texts are `fonts/OFL-*.txt`. Characters outside the Latin subset fall back to the system stacks in `css/tokens.css`.
+The three families are served from `fonts/` as variable `woff2` files (Latin, plus Latin Extended for Instrument Sans and JetBrains Mono and Greek for JetBrains Mono), declared in `css/fonts.css`, so the app makes no font requests to other hosts and works offline. They are Instrument Sans, Fraunces (with its optical size axis) and JetBrains Mono, taken from the `@fontsource-variable` packages, and each is under the SIL Open Font License 1.1; the licence texts are `fonts/OFL-*.txt`. Characters outside those subsets fall back to the system stacks in `css/tokens.css`.
 
 ## Parameters
 

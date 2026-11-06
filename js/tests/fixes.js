@@ -11,6 +11,7 @@ import { hydrateSettings } from '../data/migrate.js';
 import { runFlow } from '../core/flow.js';
 import { randomRouting, randomRouteParams } from './props.js';
 import { generatePatients } from '../data/synth.js';
+import { OUTCOMES } from '../core/override.js';
 import { buildSampleTables } from '../data/samples.js';
 
 const service = { id: 'svc', name: 'svc', price: 100, complexity: 1 };
@@ -281,5 +282,58 @@ export const register = t => {
     const run = bigBatch(10000, 1000);
     t.same(run.batch.summary.placed + run.batch.summary.unplaced, 10000);
     t.ok(run.ms < 120000, `took ${Math.round(run.ms)} ms`);
+  });
+
+  t.test('REQ requested_site validates and compiles onto the patient', () => {
+    const tables = buildSampleTables();
+    const result = validateTables(tables, defaultParams());
+    t.same(result.routing.data.patients.filter(p => p.requested).map(p => [p.id, p.requested]), [['P001', 'ntg'], ['P002', 'ntg'], ['P004', 'bfh'], ['P005', 'krh']]);
+    tables.patients = tables.patients.map((p, i) => (i === 2 ? { ...p, requested_site: 'nowhere' } : p));
+    const bad = validateTables(tables, defaultParams());
+    t.ok(bad.ok, 'an unknown request does not block');
+    t.ok(bad.issues.some(i => i.table === 'patients' && i.column === 'requested_site' && i.severity === 'warning'));
+    t.same(bad.routing.data.patients[2].requested, '');
+    const old = buildSampleTables();
+    old.patients = old.patients.map(({ requested_site, ...rest }) => rest);
+    t.ok(validateTables(old, defaultParams()).ok, 'old uploads without the column stay valid');
+  });
+
+  t.test('REQ the batch judges every request against the final placements', () => {
+    const params = defaultParams('route');
+    const result = validateTables(buildSampleTables(), params);
+    const model = prepareRouting(result.routing.data, params);
+    const batch = routeBatch(model, result.routing.data.patients);
+    const asks = result.routing.data.patients.filter(p => p.requested);
+    const o = batch.summary.overrides;
+    t.same(o.total, asks.length);
+    t.same(o.same + o.approved + o.copay + o.signoff + o.waitlist + o.denied, o.total);
+    batch.results.filter(r => r.override).forEach(r => {
+      t.ok(OUTCOMES[r.override.outcome], 'known outcome');
+      const placedHere = r.status === 'single' && r.stops[0].id === r.override.requested;
+      t.same(r.override.outcome === 'same', placedHere, `${r.id} same only when placed at the requested site`);
+    });
+    t.ok(batch.results.filter(r => !r.override).every(r => !asks.some(p => p.id === r.id)), 'patients without a request have no verdict');
+    const withoutRequests = routeBatch(model, result.routing.data.patients.map(p => ({ ...p, requested: '' })));
+    t.same(withoutRequests.summary.overrides.total, 0);
+    t.same(withoutRequests.results.map(r => r.stops.map(s => s.id)), batch.results.map(r => r.stops.map(s => s.id)), 'requests never change the placements');
+    const csv = batchCsv(batch).replace(/^\ufeff/, '').split(/\r?\n/);
+    const head = csv[0].split(',');
+    t.ok(head.includes('requested_site') && head.includes('override_outcome') && head.includes('override_copay'));
+    const row = csv.find(line => line.startsWith('P002,'));
+    t.ok(row.includes('ntg'), 'the CSV carries the request');
+  });
+
+  t.test('REQ random batches keep the override tally consistent', () => {
+    for (let i = 0; i < 40; i++) {
+      const rng = createRng(t.seed * 83 + i);
+      const data = randomRouting(rng);
+      const model = prepareRouting(data, randomRouteParams(rng));
+      const patients = data.patients.slice(0, 20).map(p => ({ ...p, requested: rng.chance(0.5) ? rng.pick(data.facilities).id : '' }));
+      const batch = routeBatch(model, patients);
+      const o = batch.summary.overrides;
+      t.same(o.total, patients.filter(p => p.requested).length);
+      t.same(o.same + o.approved + o.copay + o.signoff + o.waitlist + o.denied, o.total);
+      t.ok(o.copayTotal >= 0);
+    }
   });
 };

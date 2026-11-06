@@ -9,9 +9,9 @@ import { buildSampleTables } from '../data/samples.js';
 import { validateTables } from '../data/validate.js';
 import { createManager, createMemoryBackend } from '../data/store.js';
 import { decisionRecord, mdCell } from '../data/record.js';
-import { loadLedger, saveLedger, addEntry, ledgerCsv, LEDGER_MAX, LEDGER_KEY } from '../data/ledger.js';
+import { loadLedger, saveLedger, addEntry, ledgerCsv, sanitiseEntry, normaliseLedger, parseLedgerJson, mergeLedgers, LEDGER_MAX, LEDGER_KEY } from '../data/ledger.js';
 import { createRouteView } from '../ui/route-view.js';
-import { makeContext, wait } from './ui.js';
+import { makeContext, wait, waitFor } from './ui.js';
 
 const routing = (tables, params) => {
   const result = validateTables(tables, params);
@@ -133,24 +133,31 @@ export const register = t => {
       const log = Array.from(view.el.querySelectorAll('button')).find(b => b.textContent === 'Log decision');
       t.ok(log, 'log button');
       log.click();
+      await wait(60);
       log.click();
-      await wait(20);
+      await wait(60);
       t.same(toasts, ['Logged', 'Already in the ledger']);
-      const stored = loadLedger(window.localStorage);
+      const stored = await ctx.manager.readLedger();
       t.same(stored.length, 1);
       t.ok(!('patientName' in stored[0]), 'no names by default');
       t.ok(view.el.querySelector('.audit-checks .ok'), 'integrity list rendered');
       t.ok(view.el.querySelector('.runid code').textContent.length === 8, 'run id shown');
       t.ok(Array.from(view.el.querySelectorAll('button')).some(b => b.textContent === 'Copy decision record'));
+      const again = createRouteView(ctx);
+      Object.assign(ctx.views, { route: again });
+      document.body.append(again.el);
+      again.update();
+      t.ok(await waitFor(() => again.el.querySelector('.audit-card table, .card table.tbl'), 2000), 'a new view reads the saved ledger');
+      again.el.remove();
     } finally {
       view.el.remove();
-      window.localStorage.removeItem(LEDGER_KEY);
     }
   });
 
   t.test('WP2 choosing a requested site shows the override card, changes the run id and the record', async () => {
     const ctx = makeContext();
     ctx.settings.routeMode = 'single';
+    ctx.settings.patientId = 'P003';
     const view = createRouteView(ctx);
     Object.assign(ctx.views, { route: view });
     document.body.append(view.el);
@@ -310,5 +317,78 @@ export const register = t => {
     } finally {
       view.el.remove();
     }
+  });
+
+  const sampleEntry = (n, when = '2026-01-02T03:04:05.000Z') => ({ id: `r${n}`, t: when, engine: '3.1.0', patientId: `P${n}`, needs: ['a'], urgency: 'routine', preset: 'Balanced', plan: ['s'], score: 0.5, km: 3, ttc: 1, cost: 10, confidence: 'Clear lead' });
+
+  t.test('LEDGER entries are sanitised, parsed and merged defensively', () => {
+    t.same(sanitiseEntry(null), null);
+    t.same(sanitiseEntry({ id: '', t: '2026-01-01' }), null);
+    t.same(sanitiseEntry({ id: 'x', t: 'not a date' }), null);
+    const dirty = sanitiseEntry({ ...sampleEntry(1), score: 'abc', extra: '<img onerror=alert(1)>', needs: ['a', 5], patientName: 7 });
+    t.same(dirty.score, 0);
+    t.same(dirty.needs, ['a']);
+    t.ok(!('extra' in dirty) && !('patientName' in dirty), 'unknown keys and non-text names are dropped');
+    t.same(normaliseLedger('nope'), []);
+    t.same(normaliseLedger([sampleEntry(1), sampleEntry(1), sampleEntry(2, '2026-02-01T00:00:00.000Z')]).map(e => e.id), ['r2', 'r1']);
+    t.ok(parseLedgerJson('{broken').error.includes('not valid JSON'));
+    t.ok(parseLedgerJson('{"a":1}').error.includes('does not look like'));
+    const parsed = parseLedgerJson(JSON.stringify({ entries: [sampleEntry(1), { id: 'bad' }, sampleEntry(3)] }));
+    t.same([parsed.items.length, parsed.skipped], [2, 1]);
+    const merged = mergeLedgers([sampleEntry(1)], normaliseLedger([sampleEntry(1), sampleEntry(2, '2026-03-01T00:00:00.000Z')]));
+    t.same([merged.added, merged.duplicates, merged.items.map(e => e.id)], [1, 1, ['r2', 'r1']]);
+  });
+
+  t.test('LEDGER an old localStorage ledger is migrated into the store and removed', async () => {
+    saveLedger(window.localStorage, [sampleEntry(8), sampleEntry(9, '2026-05-05T00:00:00.000Z')]);
+    const ctx = makeContext();
+    ctx.settings.routeMode = 'single';
+    const view = createRouteView(ctx);
+    Object.assign(ctx.views, { route: view });
+    document.body.append(view.el);
+    try {
+      view.update();
+      t.ok(await waitFor(() => view.el.querySelectorAll('.card table.tbl tbody tr').length === 2, 3000), 'both entries shown');
+      t.same((await ctx.manager.readLedger()).map(e => e.id).sort(), ['r8', 'r9']);
+      t.same(window.localStorage.getItem(LEDGER_KEY), null, 'the old copy is removed after a successful write');
+    } finally {
+      view.el.remove();
+      window.localStorage.removeItem(LEDGER_KEY);
+    }
+  });
+
+  t.test('LEDGER importing a JSON export merges, skips duplicates and reports what happened', async () => {
+    window.localStorage.removeItem(LEDGER_KEY);
+    const ctx = makeContext();
+    const toasts = [];
+    ctx.toast = text => toasts.push(text);
+    await ctx.manager.writeLedger([sampleEntry(1)]);
+    ctx.settings.routeMode = 'single';
+    const view = createRouteView(ctx);
+    Object.assign(ctx.views, { route: view });
+    document.body.append(view.el);
+    try {
+      view.update();
+      await waitFor(() => view.el.querySelectorAll('.card table.tbl tbody tr').length === 1, 3000);
+      const input = view.el.querySelector('input[aria-label="Import ledger JSON"]');
+      const file = new window.File([JSON.stringify([sampleEntry(1), sampleEntry(2, '2026-04-01T00:00:00.000Z'), { id: 'junk' }])], 'ledger.json', { type: 'application/json' });
+      Object.defineProperty(input, 'files', { value: [file], configurable: true });
+      input.dispatchEvent(new window.Event('change'));
+      t.ok(await waitFor(() => toasts.some(x => x.startsWith('Imported')), 3000), 'a result is reported');
+      t.same(toasts.find(x => x.startsWith('Imported')), 'Imported 1 entry, skipped 2');
+      t.same((await ctx.manager.readLedger()).map(e => e.id), ['r2', 'r1']);
+      const bad = new window.File(['not json'], 'x.json');
+      const input2 = view.el.querySelector('input[aria-label="Import ledger JSON"]');
+      Object.defineProperty(input2, 'files', { value: [bad], configurable: true });
+      input2.dispatchEvent(new window.Event('change'));
+      t.ok(await waitFor(() => toasts.some(x => x.includes('not valid JSON')), 3000), 'a bad file is refused');
+      t.same((await ctx.manager.readLedger()).length, 2, 'and nothing changed');
+    } finally {
+      view.el.remove();
+    }
+  });
+
+  t.test('LEDGER keeps up to five thousand entries', () => {
+    t.same(LEDGER_MAX, 5000);
   });
 };

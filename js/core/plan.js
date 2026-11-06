@@ -2,7 +2,7 @@ import { runFlow } from './flow.js';
 import { weakPointRisks } from './risk.js';
 import { normaliseWeights } from './score.js';
 import { sum, tieKey, compareText } from './stats.js';
-import { FIX_PRESETS, paramsToJSON } from './params.js';
+import { FIX_PRESETS, FIX_WEIGHT_KEYS, paramsToJSON } from './params.js';
 import { canonical } from './hash.js';
 
 const EPSILON = 1e-12;
@@ -65,11 +65,31 @@ export const applyFixes = (site, fixIds) => {
   return { site: { ...site, stations }, adjust };
 };
 
+const evaluationCache = new WeakMap();
+const EVALUATION_CACHE_LIMIT = 256;
+
+const flowParamsKey = params => {
+  const json = { ...paramsToJSON(params) };
+  FIX_WEIGHT_KEYS.forEach(key => { delete json[key]; });
+  return canonical(json);
+};
+
 export const evaluateClinic = (site, fixIds, params) => {
+  const key = `${fixIds.slice().sort().join('|')}#${flowParamsKey(params)}`;
+  let perSite = evaluationCache.get(site);
+  if (!perSite) {
+    perSite = new Map();
+    evaluationCache.set(site, perSite);
+  }
+  const hit = perSite.get(key);
+  if (hit) return hit;
   const applied = applyFixes(site, fixIds);
   const flow = runFlow(applied.site, params);
   const risks = weakPointRisks(applied.site, flow, params, applied.adjust);
-  return { flow, risks, totR: sum(risks.map(r => r.r)), pmw: flow.pmw, site: applied.site };
+  const out = { flow, risks, totR: sum(risks.map(r => r.r)), pmw: flow.pmw, site: applied.site };
+  if (perSite.size >= EVALUATION_CACHE_LIMIT) perSite.clear();
+  perSite.set(key, out);
+  return out;
 };
 
 const touchedStations = (site, fix) => {

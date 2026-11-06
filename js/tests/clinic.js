@@ -5,6 +5,8 @@ import { hydrateSettings } from '../data/migrate.js';
 import { plansCsv } from '../data/export.js';
 import { evaluateClinic, rankFixes, autoPlan, governanceKpis, orderStability, uncoveredBottlenecks, phaseOf, downstreamOf, fixBlockers } from '../core/plan.js';
 import { createClinicView } from '../ui/clinic-view.js';
+import { createRng } from '../core/rng.js';
+import { FIX_PRESETS } from '../core/params.js';
 import { makeContext, wait } from './ui.js';
 
 const sampleSite = (mutate = t => t) => {
@@ -164,5 +166,30 @@ export const register = t => {
     } finally {
       view.el.remove();
     }
+  });
+
+  t.test('PERF cached clinic evaluations equal fresh ones and ignore only the fix weights', () => {
+    const { site } = sampleSite();
+    for (let i = 0; i < 40; i++) {
+      const rng = createRng(t.seed * 97 + i);
+      const params = { ...defaultParams(), season: rng.range(0.6, 1.6) };
+      const ids = site.fixes.filter(() => rng.chance(0.4)).map(f => f.id);
+      const cached = evaluateClinic(site, ids, params);
+      const again = evaluateClinic(site, ids.slice().reverse(), params);
+      t.same(again, cached, 'order of applied ids does not matter and the hit is shared');
+      const fresh = evaluateClinic(structuredClone(site), ids, params);
+      t.near(fresh.totR, cached.totR, 1e-9);
+      t.near(fresh.pmw, cached.pmw, 1e-9);
+      const reweighted = evaluateClinic(site, ids, { ...params, ...FIX_PRESETS['Risk first'] });
+      t.same(reweighted, cached, 'fix weights do not change the simulation');
+    }
+    const params = defaultParams();
+    const first = rankFixes(site, [], params).items.map(i => i.fix.id);
+    const heavy = rankFixes(site, [], { ...params, ...FIX_PRESETS['Flow first'] }).items.map(i => i.fix.id);
+    const freshHeavy = rankFixes(structuredClone(site), [], { ...params, ...FIX_PRESETS['Flow first'] }).items.map(i => i.fix.id);
+    t.same(heavy, freshHeavy, 'reweighted ranking from the cache equals a cold run');
+    t.ok(first.length === heavy.length);
+    const changed = evaluateClinic(site, [], { ...params, season: params.season === 0 ? 1 : 0 });
+    t.ok(changed.totR !== evaluateClinic(site, [], params).totR || changed.pmw !== evaluateClinic(site, [], params).pmw, 'a flow parameter does change the result');
   });
 };

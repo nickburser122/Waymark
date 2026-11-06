@@ -27,7 +27,7 @@ export const createEqView = ctx => {
     host.replaceChildren(...issueNotes(params), ...equationBlocks(params).map(block => {
       const stage = STAGES.find(s => s.id === block.stage);
       const el = h('article', { class: 'eqblock', id: `eq-${block.id}`, 'data-stage': block.stage, style: { '--c': `var(--${stage.color})` }, 'aria-labelledby': `eq-${block.id}-t` },
-        h('h4', { id: `eq-${block.id}-t` }, block.title, h('span', { text: `Stage ${stage.id} · ${stage.name}` })));
+        h('h3', { id: `eq-${block.id}-t` }, block.title, h('span', { text: `Stage ${stage.id} · ${stage.name}` })));
       if (!formula) {
         el.append(h('ul', { class: 'sentences' }, block.plain.map(s => h('li', { text: s }))));
       } else {
@@ -52,7 +52,7 @@ export const createEqView = ctx => {
     const share = key => (wsum > 0 ? params[key] / wsum : 1 / ROUTE_WEIGHT_KEYS.length);
     const maxDays = Math.max(30, 4 * Math.max(params.tauRoutine, params.tauSoon, params.tauUrgent));
     return h('article', { class: 'eqblock', id: 'eq-curves', style: { '--c': 'var(--sky)' }, 'aria-labelledby': 'eq-curves-t' },
-      h('h4', { id: 'eq-curves-t' }, 'Try another value', h('span', { text: 'sub-score curves' })),
+      h('h3', { id: 'eq-curves-t' }, 'Try another value', h('span', { text: 'sub-score curves' })),
       h('p', { class: 'note', text: 'Drag a slider to see how each sub-score responds. The curves use your current parameters and data.' }),
       h('div', { class: 'curve-grid' },
         curveCard({ title: 'Time score', xLabel: 'days to care', from: 0, to: maxDays, step: 0.5, value: Math.min(7, maxDays), format: v => `${v} d`, weight: share('wT'),

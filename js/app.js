@@ -54,7 +54,7 @@ const start = async () => {
 
   const stageButtons = STAGES.map(stage => {
     const small = h('small');
-    const button = h('button', { type: 'button', class: 'stage', role: 'listitem', style: { '--c': `var(--${stage.color})` }, 'data-tip': `Stage ${stage.id}: open its equation` }, `${stage.id} ${stage.name}`, small);
+    const button = h('button', { type: 'button', class: 'stage', style: { '--c': `var(--${stage.color})` }, 'data-tip': `Stage ${stage.id}: open its equation` }, `${stage.id} ${stage.name}`, small);
     button.addEventListener('click', () => ctx.navigate('eq', { stage: stage.id }));
     return { button, small, stage };
   });

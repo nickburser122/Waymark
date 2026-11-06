@@ -51,7 +51,8 @@ export const TABLES = Object.freeze({
       col('y'),
       col('needs', { required: true, synonyms: ['services_needed', 'need', 'services', 'required_services'] }),
       col('urgency', { required: true, synonyms: ['priority', 'triage', 'acuity'] }),
-      col('previous_site', { synonyms: ['previous', 'prev_site', 'usual_site', 'last_site'] })
+      col('previous_site', { synonyms: ['previous', 'prev_site', 'usual_site', 'last_site'] }),
+      col('requested_site', { synonyms: ['requested', 'preferred_site', 'asks_for', 'patient_choice'] })
     ]
   },
   travel: {

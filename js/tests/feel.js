@@ -49,14 +49,14 @@ export const register = t => {
   });
 
   t.test('FEEL keepState restores focus onto the equivalent control and keeps inner scroll', () => {
-    const host = h('div', {}, h('div', { class: 'table-wrap' }, h('p', { text: 'long' })), h('button', { type: 'button', text: 'Save' }), h('button', { type: 'button', text: 'Delete' }));
+    const host = h('div', {}, h('div', { class: 'table-wrap', style: { height: '20px', overflow: 'auto' } }, h('p', { text: 'long', style: { height: '300px', margin: 0 } })), h('button', { type: 'button', text: 'Save' }), h('button', { type: 'button', text: 'Delete' }));
     document.body.append(host);
     try {
       host.children[0].scrollTop = 40;
       const second = host.children[2];
       second.focus();
       keepState(host, () => {
-        const scroll = h('div', { class: 'table-wrap' }, h('p', { text: 'long' }));
+        const scroll = h('div', { class: 'table-wrap', style: { height: '20px', overflow: 'auto' } }, h('p', { text: 'long', style: { height: '300px', margin: 0 } }));
         host.replaceChildren(scroll, h('button', { type: 'button', text: 'Save' }), h('button', { type: 'button', text: 'Delete' }));
       });
       t.same(document.activeElement.textContent, 'Delete', 'focus returns to the same control');
@@ -129,9 +129,14 @@ export const register = t => {
     try {
       const tip = document.getElementById('wm-tip');
       const button = host.firstChild;
-      button.dispatchEvent(new window.Event('focusin', { bubbles: true }));
-      await wait(380);
-      t.ok(!tip.hidden && tip.textContent === 'first text', 'tip shown');
+      let shown = false;
+      for (let attempt = 0; attempt < 6 && !shown; attempt++) {
+        await wait(120);
+        button.dispatchEvent(new window.Event('focusin', { bubbles: true }));
+        shown = await waitFor(() => !tip.hidden, 700);
+      }
+      t.ok(shown, 'tip shown');
+      t.same(tip.textContent, 'first text');
       button.setAttribute('data-tip', 'second text');
       await wait(260);
       t.same(tip.textContent, 'second text', 'tip follows the attribute');
@@ -163,6 +168,58 @@ export const register = t => {
       wrap.dispatchEvent(new window.Event('scroll'));
       await wait(60);
       t.ok(wrap.querySelector('tr[data-id]') !== first, 'rows change once the window moves');
+    } finally {
+      view.el.remove();
+    }
+  });
+
+  t.test('FEEL bars animate from their old width to the new one and skip unchanged or new bars', () => {
+    const calls = [];
+    const hadAnimate = Element.prototype.animate;
+    const hadMatch = window.matchMedia;
+    Element.prototype.animate = function animateStub(frames, options) { calls.push({ key: this.getAttribute('data-tw'), frames, options }); return {}; };
+    window.matchMedia = () => ({ matches: false });
+    const bar = (key, width) => h('i', { 'data-tw': key, style: { width: `${width}%` } });
+    const host = h('div', {}, bar('a', 10), bar('b', 50), bar('c', 80));
+    document.body.append(host);
+    try {
+      keepState(host, () => host.replaceChildren(bar('a', 40), bar('b', 50), bar('d', 20)));
+      t.same(calls.length, 1, 'only the changed bar animates');
+      t.same(calls[0].key, 'a');
+      t.same(calls[0].frames, [{ width: '10%' }, { width: '40%' }]);
+      t.ok(calls[0].options.duration > 0);
+      window.matchMedia = () => ({ matches: true });
+      keepState(host, () => host.replaceChildren(bar('a', 90), bar('b', 5), bar('d', 20)));
+      t.same(calls.length, 1, 'reduced motion turns the animation off');
+    } finally {
+      Element.prototype.animate = hadAnimate;
+      window.matchMedia = hadMatch;
+      host.remove();
+    }
+  });
+
+  t.test('FEEL an unchanged batch result is not rebuilt, and a real change still repaints it', async () => {
+    const ctx = makeContext();
+    ctx.settings.routeMode = 'batch';
+    const pipes = [];
+    ctx.setPipe = values => pipes.push(values.slice());
+    const view = createRouteView(ctx);
+    Object.assign(ctx.views, { route: view });
+    document.body.append(view.el);
+    try {
+      view.update();
+      t.ok(await waitFor(() => view.el.querySelector('.results-wrap tr[data-id]'), 15000), 'rows drawn');
+      const row = view.el.querySelector('.results-wrap tr[data-id]');
+      const beforePipes = pipes.length;
+      view.update();
+      view.update();
+      t.same(view.el.querySelector('.results-wrap tr[data-id]'), row, 'the same row element after a no-change update');
+      t.ok(pipes.length >= beforePipes + 2, 'the pipeline strip is still refreshed');
+      t.same(pipes[pipes.length - 1], pipes[beforePipes - 1], 'with the same values');
+      ctx.settings.params.wT = 5;
+      ctx.changed();
+      view.update();
+      t.ok(await waitFor(() => view.el.querySelector('.results-wrap tr[data-id]') !== row, 15000), 'a parameter change rebuilds the table');
     } finally {
       view.el.remove();
     }

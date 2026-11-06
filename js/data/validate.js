@@ -172,10 +172,12 @@ export const compileRouting = (tables, params, add) => {
     else add('patients', i, 'urgency', 'Urgency must be routine, soon, urgent or 0, 1, 2');
     const previous = (p.previous_site || '').trim();
     if (previous && !facilityIds.has(previous)) add('patients', i, 'previous_site', `Unknown facility "${previous}"`);
+    const requested = (p.requested_site || '').trim();
+    if (requested && !facilityIds.has(requested)) add('patients', i, 'requested_site', `Unknown facility "${requested}"; the request is ignored`, 'warning');
     if (okId && coord.mode !== 'bad' && needs.length && urgency !== null) {
       typedPatients.push({
         id, name: (p.name || '').trim() || id, lat: coord.lat, lon: coord.lon, x: coord.x, y: coord.y,
-        needs: needs.filter(n => serviceIds.has(n)), urgency, previous: facilityIds.has(previous) ? previous : ''
+        needs: needs.filter(n => serviceIds.has(n)), urgency, previous: facilityIds.has(previous) ? previous : '', requested: facilityIds.has(requested) ? requested : ''
       });
     }
   });

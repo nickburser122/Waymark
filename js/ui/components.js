@@ -633,22 +633,53 @@ const findKey = (host, key) => {
   return same[key.nth] || same[same.length - 1] || null;
 };
 
+const harvestWidths = host => {
+  const found = new Map();
+  host.querySelectorAll('[data-tw]').forEach(el => {
+    const width = parseFloat(el.style.width);
+    if (Number.isFinite(width)) found.set(el.getAttribute('data-tw'), width);
+  });
+  return found;
+};
+
+const TWEEN_MS = 220;
+
+const tweenWidths = (host, before) => {
+  if (!before.size || typeof Element.prototype.animate !== 'function') return;
+  if (typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  host.querySelectorAll('[data-tw]').forEach(el => {
+    const from = before.get(el.getAttribute('data-tw'));
+    const to = parseFloat(el.style.width);
+    if (from === undefined || !Number.isFinite(to) || Math.abs(from - to) < 0.2) return;
+    el.animate([{ width: `${from}%` }, { width: `${to}%` }], { duration: TWEEN_MS, easing: 'ease-out' });
+  });
+};
+
 export const keepState = (host, run) => {
   const active = document.activeElement;
   const hadFocus = !!active && active !== document.body && host.contains(active);
   const key = hadFocus ? focusKey(active, host) : null;
   const scrolls = Array.from(host.querySelectorAll(SCROLL_HOSTS)).map(el => ({ top: el.scrollTop, left: el.scrollLeft }));
+  const anyScrolled = scrolls.some(item => item.top > 0 || item.left > 0);
   const pageY = typeof window.scrollY === 'number' ? window.scrollY : 0;
+  const widths = harvestWidths(host);
   run();
-  Array.from(host.querySelectorAll(SCROLL_HOSTS)).forEach((el, i) => {
-    if (scrolls[i] && (el.scrollTop !== scrolls[i].top || el.scrollLeft !== scrolls[i].left)) {
-      el.scrollTop = scrolls[i].top;
-      el.scrollLeft = scrolls[i].left;
-    }
-  });
+  tweenWidths(host, widths);
+  if (anyScrolled) {
+    Array.from(host.querySelectorAll(SCROLL_HOSTS)).forEach((el, i) => {
+      if (scrolls[i] && (scrolls[i].top > 0 || scrolls[i].left > 0)) {
+        el.scrollTop = scrolls[i].top;
+        el.scrollLeft = scrolls[i].left;
+      }
+    });
+  }
   if (hadFocus) {
     const target = active.isConnected ? active : findKey(host, key);
     if (target && document.activeElement !== target) target.focus({ preventScroll: true });
   }
-  if (typeof window.scrollTo === 'function' && Math.abs((window.scrollY || 0) - pageY) > 1) window.scrollTo(0, pageY);
+  if (pageY > 0 && typeof window.scrollTo === 'function') {
+    requestAnimationFrame(() => {
+      if (Math.abs((window.scrollY || 0) - pageY) > 1) window.scrollTo(0, pageY);
+    });
+  }
 };

@@ -15,7 +15,7 @@ export const createGrid = ({ manager, table, records, onApply, onCancel }) => {
   const summary = h('p', { class: 'summary-line', 'aria-live': 'polite' });
   const issueList = h('ul', { class: 'issue-list' });
   const body = h('tbody');
-  const head = h('thead', {}, h('tr', {}, h('th', { text: '#' }), keys.map(k => h('th', { text: required.has(k) ? `${k} *` : k, scope: 'col' })), h('th', { class: 'del', 'aria-label': 'Delete row' })));
+  const head = h('thead', {}, h('tr', {}, h('th', { text: '#' }), keys.map(k => h('th', { text: required.has(k) ? `${k} *` : k, scope: 'col' })), h('th', { class: 'del', scope: 'col' }, h('span', { class: 'vh', text: 'Delete row' }))));
   const wrap = h('div', { class: 'gridwrap', role: 'region', 'aria-label': `${TABLES[table].label} grid`, tabindex: '-1' }, h('table', { class: 'gridtable' }, head, body));
   const pager = h('div', { class: 'toolbar' });
   const apply = h('button', { type: 'button', class: 'btn primary', text: 'Apply', onClick: () => onApply(rows.map(r => ({ ...r }))) });

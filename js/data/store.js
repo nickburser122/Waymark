@@ -8,6 +8,7 @@ const STORE = 'datasets';
 const KEY = 'active';
 const UNDO_LIMIT = 50;
 const QUARANTINE_PREFIX = 'quarantine-';
+const LEDGER_STORE_KEY = 'ledger';
 
 export const createMemoryBackend = () => {
   const map = new Map();
@@ -83,6 +84,7 @@ export const createManager = ({ backend, getParams }) => {
   let storageNote = '';
   let quarantine = [];
   let fingerprintCache = { version: -1, value: '' };
+  let ledgerMemory = null;
   const drafts = {};
 
   const emit = () => listeners.forEach(fn => fn(api));
@@ -254,6 +256,30 @@ export const createManager = ({ backend, getParams }) => {
       }
       const compiled = api.compiled();
       return { kind: state.sources[name] === 'sample' ? 'sample' : 'yours', rows, issues: 0, warnings: compiled.byTable[name].warnings };
+    },
+    readLedger: async () => {
+      if (!backend) return ledgerMemory;
+      try { return await backend.get(LEDGER_STORE_KEY); } catch (e) { return ledgerMemory; }
+    },
+    writeLedger: async items => {
+      ledgerMemory = items;
+      if (!backend) return true;
+      try { await backend.set(LEDGER_STORE_KEY, items); return true; } catch (e) { return false; }
+    },
+    deleteBackup: async key => {
+      if (!backend || !quarantine.includes(key)) return false;
+      await backend.remove(key);
+      quarantine = await listBackups();
+      emit();
+      return true;
+    },
+    deleteAllBackups: async () => {
+      if (!backend) return 0;
+      const keys = quarantine.slice();
+      for (const key of keys) await backend.remove(key);
+      quarantine = await listBackups();
+      emit();
+      return keys.length;
     },
     quarantined: () => quarantine.slice(),
     backup: async key => (backend && quarantine.includes(key) ? backend.get(key) : null),

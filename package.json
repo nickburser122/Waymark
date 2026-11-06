@@ -1,0 +1,23 @@
+{
+  "name": "waymark",
+  "version": "3.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Care-routing and clinic-flow tool. A static site with no server and no build step.",
+  "scripts": {
+    "test": "node tools/node-tests.mjs",
+    "test:browser": "node tools/browser-tests.mjs",
+    "screenshots": "node tools/screenshots.mjs",
+    "serve": "node tools/serve.mjs",
+    "a11y": "node tools/a11y.mjs",
+    "perf": "node tools/perf.mjs",
+    "profile": "node tools/profile.mjs"
+  },
+  "devDependencies": {
+    "@sparticuz/chromium": "^153.0.0",
+    "axe-core": "^4.14.0",
+    "fake-indexeddb": "^6.2.7",
+    "jsdom": "^30.1.3",
+    "puppeteer-core": "^25.16.0"
+  }
+}

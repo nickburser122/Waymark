@@ -36,5 +36,5 @@ export const curveCard = ({ title, xLabel, from, to, step, value, lines, format,
   };
   const slider = Slider({ min: from, max: to, step, value, label: `Try a value for ${xLabel}`, format, onInput: paint, onChange: paint });
   paint(value);
-  return h('div', { class: 'curve-card' }, h('h5', { text: title }), svg, slider.el, readout);
+  return h('div', { class: 'curve-card' }, h('h4', { text: title }), svg, slider.el, readout);
 };

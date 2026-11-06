@@ -8,7 +8,7 @@ import { prepareRouting, routePatient, robustness, gateReasons, runId, integrity
 import { judgeOverride, OUTCOMES } from '../core/override.js';
 import { ENGINE_VERSION } from '../core/version.js';
 import { decisionRecord } from '../data/record.js';
-import { loadLedger, saveLedger, addEntry, ledgerCsv, ledgerJson } from '../data/ledger.js';
+import { loadLedger, LEDGER_KEY, addEntry, normaliseLedger, parseLedgerJson, mergeLedgers, ledgerCsv, ledgerJson } from '../data/ledger.js';
 import { routeBatch, slimBatch } from '../core/batch.js';
 import { SCORE_KEYS } from '../core/score.js';
 import { batchCsv } from '../data/export.js';
@@ -19,7 +19,7 @@ const GATE_NOTE = { covers: 'missing a service', load: 'too full', reach: 'too f
 const ROW_HEIGHT = 38;
 const VIRTUAL_FROM = 200;
 
-const barSegments = (parts, total) => SCORE_KEYS.map(k => html`<i style="width:${(total > 0 ? parts[k] : 0) * 100}%;--k:var(--${SCORE_META[k].color})"></i>`);
+const barSegments = (parts, total, scope = 'bar') => SCORE_KEYS.map(k => html`<i data-tw="${scope}:${k}" style="width:${(total > 0 ? parts[k] : 0) * 100}%;--k:var(--${SCORE_META[k].color})"></i>`);
 
 export const createRouteView = ctx => {
   const { manager, settings } = ctx;
@@ -77,6 +77,7 @@ export const createRouteView = ctx => {
     requested: '',
     tokenUsed: false,
     noteOn: false,
+    painted: null,
     ledger: null,
     confirmClear: false,
     audit: null
@@ -189,6 +190,7 @@ export const createRouteView = ctx => {
     state.patient = { ...found, needs: found.needs.slice() };
     state.selected = '';
     state.fromBatch = false;
+    state.requested = found.requested || '';
     settings.patientId = found.id;
     ctx.persist();
     update();
@@ -203,14 +205,17 @@ export const createRouteView = ctx => {
     let p = state.patient;
     if (!p && settings.patientId) {
       const saved = data.patients.find(x => x.id === settings.patientId);
-      if (saved) p = state.patient = clone(saved);
+      if (saved) { p = state.patient = clone(saved); if (!state.requested) state.requested = saved.requested || ''; }
     } else if (p && p.id !== 'custom') {
       const fresh = data.patients.find(x => x.id === p.id);
       if (fresh) p = state.patient = clone(fresh);
     }
     const stale = !p || (p.id !== 'custom' && !data.patients.some(x => x.id === p.id)) || p.needs.some(n => !serviceIds.has(n)) || (p.previous && !facilityIds.has(p.previous)) ||
       (mode === 'geo' ? !Number.isFinite(p.lat) : !Number.isFinite(p.x));
-    if (stale) p = state.patient = defaultPatient(data);
+    if (stale) {
+      p = state.patient = defaultPatient(data);
+      state.requested = p.requested || '';
+    }
     casesChips = ChipGroup({
       label: 'Cases', options: data.patients.slice(0, 8).map(x => ({ value: x.id, label: x.name })), selected: [p.id],
       onChange: id => {
@@ -363,26 +368,70 @@ export const createRouteView = ctx => {
     const rows = sorted.map(t => {
       const meta = SCORE_META[t.key];
       const width = `${(Math.abs(t.delta) / scale) * 50}%`;
-      const bar = h('i', { class: t.delta >= 0 ? 'gap-pos' : 'gap-neg', style: { width, '--k': t.delta >= 0 ? `var(--${meta.color})` : 'var(--persimmon-ink)' } });
+      const bar = h('i', { class: t.delta >= 0 ? 'gap-pos' : 'gap-neg', 'data-tw': `gap:${t.key}:${t.delta >= 0 ? 'p' : 'n'}`, style: { width, '--k': t.delta >= 0 ? `var(--${meta.color})` : 'var(--persimmon-ink)' } });
       return h('div', { class: 'gap-row' },
         h('span', { class: 'gap-name', text: meta.name }),
         h('span', { class: 'gap-track', role: 'img', tabindex: '0', 'data-tip': `${meta.name}: ${t.delta >= 0 ? A : B} ahead by ${Math.abs(t.delta).toFixed(3)}`, 'aria-label': `${meta.name}: ${t.delta >= 0 ? 'favours' : 'favours'} ${t.delta >= 0 ? A : B} by ${Math.abs(t.delta).toFixed(3)}` }, bar),
         h('span', { class: 'gap-val', text: `${t.delta >= 0 ? '+' : '−'}${Math.abs(t.delta).toFixed(3)}` }));
     });
-    gapCard.replaceChildren(
+    gapCard.replaceChildren(...[
       h('h3', {}, 'Why this one and not that one', h('span', { text: formula ? 'formula' : 'plain' })),
       h('p', { class: 'note' }, `${A} leads ${B} by ${gap.margin.toFixed(2)}; the bars add up to that gap. Biggest gap: ${SCORE_META[gap.decisive.key].name}. Each bar is in `, term('weight points'), ' terms.'),
       h('div', { class: 'gap-axis' }, h('span', { text: `← favours ${B}` }), h('span', { text: `favours ${A} →` })),
       ...rows,
-      formula ? h('pre', { class: 'formula', text: 'Δ_k = ŵ_k·(s_k,A − s_k,B)\n' + sorted.map(t => `Δ_${t.key} = ${t.delta.toFixed(4)}`).join('\n') + `\nΣ Δ_k = ${gap.margin.toFixed(4)}` }) : null);
+      formula ? h('pre', { class: 'formula', text: 'Δ_k = ŵ_k·(s_k,A − s_k,B)\n' + sorted.map(t => `Δ_${t.key} = ${t.delta.toFixed(4)}`).join('\n') + `\nΣ Δ_k = ${gap.margin.toFixed(4)}` }) : null
+    ].filter(Boolean));
+  };
+
+  let ledgerLoading = null;
+
+  const removeLegacyLedger = () => {
+    try { window.localStorage.removeItem(LEDGER_KEY); } catch (e) { return; }
+  };
+
+  const ensureLedger = () => {
+    if (state.ledger) return Promise.resolve(state.ledger);
+    if (!ledgerLoading) {
+      ledgerLoading = (async () => {
+        let list = normaliseLedger(await manager.readLedger());
+        let legacy = [];
+        try { legacy = normaliseLedger(loadLedger(window.localStorage)); } catch (e) { legacy = []; }
+        if (legacy.length) {
+          list = mergeLedgers(list, legacy).items;
+          if (await manager.writeLedger(list)) removeLegacyLedger();
+        }
+        state.ledger = list;
+        ledgerLoading = null;
+        paintAudit();
+        return list;
+      })();
+    }
+    return ledgerLoading;
   };
 
   const ledgerItems = () => {
-    if (!state.ledger) state.ledger = loadLedger(window.localStorage);
+    if (!state.ledger) { ensureLedger(); return []; }
     return state.ledger;
   };
 
-  const logDecision = () => {
+  const saveLedgerItems = async items => {
+    state.ledger = items;
+    const ok = await manager.writeLedger(items);
+    if (!ok) ctx.toast('The ledger could not be saved in this browser');
+    return ok;
+  };
+
+  const importLedger = async file => {
+    const outcome = parseLedgerJson(await file.text());
+    if (outcome.error) { ctx.toast(outcome.error); return; }
+    await ensureLedger();
+    const merged = mergeLedgers(state.ledger, outcome.items);
+    await saveLedgerItems(merged.items);
+    ctx.toast(`Imported ${merged.added} ${merged.added === 1 ? 'entry' : 'entries'}${merged.duplicates + outcome.skipped ? `, skipped ${merged.duplicates + outcome.skipped}` : ''}`);
+    paintAudit();
+  };
+
+  const logDecision = async () => {
     const a = state.audit;
     if (!a || !a.result.summary) { ctx.toast('Nothing to log'); return; }
     const entry = {
@@ -401,9 +450,9 @@ export const createRouteView = ctx => {
       confidence: a.result.confidence
     };
     if (settings.ledgerNames) entry.patientName = a.patient.name;
-    const outcome = addEntry(ledgerItems(), entry);
-    state.ledger = outcome.items;
-    if (outcome.added) saveLedger(window.localStorage, state.ledger);
+    await ensureLedger();
+    const outcome = addEntry(state.ledger, entry);
+    if (outcome.added) await saveLedgerItems(outcome.items);
     ctx.toast(outcome.added ? 'Logged' : 'Already in the ledger');
     paintAudit();
   };
@@ -413,13 +462,17 @@ export const createRouteView = ctx => {
     if (!a) { auditCard.replaceChildren(); return; }
     const checks = integrityChecks(a.model, a.result, a.options);
     const items = ledgerItems();
+    const importInput = h('input', { type: 'file', accept: '.json,application/json', class: 'vh', tabindex: '-1', 'aria-label': 'Import ledger JSON' });
+    importInput.addEventListener('change', () => { const file = importInput.files && importInput.files[0]; if (file) importLedger(file); importInput.value = ''; });
+    const importButton = h('span', { class: 'import-ledger' }, h('button', { type: 'button', class: 'btn', text: 'Import JSON', onClick: () => importInput.click() }), importInput);
     const namesCheck = Check({ label: 'Store patient names in the ledger', checked: !!settings.ledgerNames, onChange: on => { settings.ledgerNames = on; ctx.persist(); } });
     const exportRow = h('div', { class: 'toolbar' },
       h('button', { type: 'button', class: 'btn', text: 'Export CSV', disabled: !items.length, onClick: () => download('waymark-ledger.csv', ledgerCsv(items), 'text/csv') }),
       h('button', { type: 'button', class: 'btn', text: 'Export JSON', disabled: !items.length, onClick: () => download('waymark-ledger.json', ledgerJson(items), 'application/json') }),
+      importButton,
       state.confirmClear
         ? h('span', { class: 'confirm-row' }, h('span', { text: `Clear all ${items.length} entries?` }),
-          h('button', { type: 'button', class: 'btn danger', text: 'Clear', onClick: () => { state.ledger = []; saveLedger(window.localStorage, []); state.confirmClear = false; paintAudit(); } }),
+          h('button', { type: 'button', class: 'btn danger', text: 'Clear', onClick: async () => { await saveLedgerItems([]); state.confirmClear = false; paintAudit(); } }),
           h('button', { type: 'button', class: 'btn quiet', text: 'Keep', onClick: () => { state.confirmClear = false; paintAudit(); } }))
         : h('button', { type: 'button', class: 'btn quiet', text: 'Clear', disabled: !items.length, onClick: () => { state.confirmClear = true; paintAudit(); } }));
     const table = items.length
@@ -480,16 +533,16 @@ export const createRouteView = ctx => {
     const robText = rob === null ? '' : rob.only ? 'Only option.' : rob.holds ? `Holds under ±${fmtNum(model.cfg.robustStep)} shifts.` : `Flips to ${rob.flip.to.name} if ${rob.flip.name} ${rob.flip.direction > 0 ? '+' : '−'}${fmtNum(rob.flip.step)}.`;
     const wexp = winner ? explain(winner, params, p.urgency) : null;
     const gap = contributionGap(result);
-    const decisiveText = gap ? `Decisive term: ${SCORE_META[gap.decisive.key].name} (+${gap.decisive.delta.toFixed(2)} over ${gap.runnerUp.facility.name}).` : '';
+    const decisiveText = gap ? `${SCORE_META[gap.decisive.key].name} (+${gap.decisive.delta.toFixed(2)} over ${gap.runnerUp.facility.name}).` : '';
     const nearest = nearestFeasible(result);
     let nearestText = '';
     if (winner && nearest) {
-      if (nearest.fi === winner.fi) nearestText = 'Nearest feasible is also best.';
+      if (nearest.fi === winner.fi) nearestText = 'Also the best choice.';
       else {
         const dCost = result.summary.cost - nearest.cost;
         const dKm = winner.km - nearest.km;
         const dTtc = winner.ttc - nearest.ttc;
-        nearestText = `Nearest feasible: ${nearest.facility.name} at ${Math.round(nearest.km)} km for ${money(nearest.cost)}. Waymark's pick ${dCost <= 0 ? `saves ${money(-dCost)}` : `costs ${money(dCost)} more`}; the trip is ${Math.round(Math.abs(dKm))} km ${dKm > 0 ? 'longer' : 'shorter'}; time to care ${dTtc >= 0 ? '+' : '−'}${Math.abs(dTtc).toFixed(1)} d.`;
+        nearestText = `${nearest.facility.name} at ${Math.round(nearest.km)} km for ${money(nearest.cost)}. Waymark's pick ${dCost <= 0 ? `saves ${money(-dCost)}` : `costs ${money(dCost)} more`}; the trip is ${Math.round(Math.abs(dKm))} km ${dKm > 0 ? 'longer' : 'shorter'}; time to care ${dTtc >= 0 ? '+' : '−'}${Math.abs(dTtc).toFixed(1)} d.`;
       }
     }
     setHtml(decision, html`
@@ -504,8 +557,8 @@ export const createRouteView = ctx => {
       ${wexp ? html`<div class="bars"><div class="stackbar" role="img" aria-label="Contribution of each term to the score">${barSegments(wexp.parts, wexp.total)}</div>
         <div class="partlist">${SCORE_KEYS.map(k => html`<span style="--k:var(--${SCORE_META[k].color})">${SCORE_META[k].name} <b>${wexp.parts[k].toFixed(2)}</b></span>`)}</div></div>` : ''}
       ${robText ? html`<p class="robust"><b>Robustness</b> · ${robText}</p>` : ''}
-      ${decisiveText ? html`<p class="robust"><b>Decisive</b> · ${decisiveText}</p>` : ''}
-      ${nearestText ? html`<p class="robust"><b>Nearest</b> · ${nearestText}</p>` : ''}`);
+      ${decisiveText ? html`<p class="robust"><b>Decisive term</b> · ${decisiveText}</p>` : ''}
+      ${nearestText ? html`<p class="robust"><b>Nearest feasible</b> · ${nearestText}</p>` : ''}`);
     const presetName = Object.keys(ROUTE_PRESETS).find(name => presetMatches(ROUTE_PRESETS[name], params, ROUTE_WEIGHT_KEYS)) || 'Custom';
     const fingerprint = manager.fingerprint();
     const judgement = state.requested ? judgeOverride(model, result, state.requested, { tokenUsed: state.tokenUsed }) : null;
@@ -538,7 +591,7 @@ export const createRouteView = ctx => {
           <span class="n">${i + 1}</span>
           <span><b>${r.facility.name}</b> <span class="tag" style="--k:var(--${r.facility.tier === 'public' ? 'pub' : r.facility.tier === 'contracted' ? 'con' : 'pri'})">${r.facility.tier}</span>${r.load >= model.cfg.nearFull ? html` <span class="tag warn" style="--k:var(--saffron)">Near full</span>` : ''}
           <small>${fmtDays(r.ttc)} d · ${Math.round(r.km)} km · ${money(r.cost)} · ${fmtPct(Math.min(1, r.load))} booked</small>
-          <span class="mini">${barSegments(r.parts, r.total)}</span></span>
+          <span class="mini">${barSegments(r.parts, r.total, `rank:${r.id}`)}</span></span>
           <span class="sc">${r.total.toFixed(2)}</span></button>`)}`);
       const row = result.ranked.find(r => r.id === state.selected);
       if (row) {
@@ -838,7 +891,7 @@ export const createRouteView = ctx => {
       ['Unplaced', cell(s.unplaced, b.unplaced, true, v => String(v))],
       ['Split plans', { a: String(s.split), b: String(b.split), cls: '' }]
     ];
-    setHtml(batchCompare, html`<h3>Against nearest feasible <span>same order</span></h3><div class="table-scroll"><table class="compare"><thead><tr><th></th><th>Waymark</th><th>Nearest</th></tr></thead><tbody>
+    setHtml(batchCompare, html`<h3>Against nearest feasible <span>same order</span></h3><div class="table-scroll"><table class="compare"><thead><tr><th scope="col"><span class="vh">Measure</span></th><th scope="col">Waymark</th><th scope="col">Nearest</th></tr></thead><tbody>
       ${lines.map(([label, c]) => html`<tr><td>${label}</td><td class="m ${c.cls === 'a' ? 'better' : ''}">${c.a}</td><td class="m ${c.cls === 'b' ? 'better' : ''}">${c.b}</td></tr>`)}</tbody></table></div>`);
     const rings = batch.loads.map(l => {
       const f = model.facilities.find(x => x.id === l.id);
@@ -849,21 +902,25 @@ export const createRouteView = ctx => {
     });
     setHtml(batchLoads, html`<h3>Site load <span>booked before → after</span></h3><div class="rings">${rings}</div>`);
     batchTable.append(h('h3', { class: 'serif', style: { 'font-size': '18px', 'margin-bottom': '10px' }, text: `Results · ${batch.results.length} patients` }), paintTable(batch));
-    ctx.setPipe([
+    const pipe = [
       `${data.patients.length} patients`,
       `${model.facilities.length} sites · ${fmtNum(model.facilities.reduce((a, f) => a + f.capacity, 0))} slots/day`,
       `avg ${fmtDays(s.avgTtc)} d to care`,
       `${s.unplaced} unplaced`,
       `${s.placed - split} single · ${split} split${model.cfg.publicLock ? ' · lock on' : ''}`,
       `${s.placed} placed`
-    ]);
+    ];
+    state.painted = { batch, key: state.batchKey, pipe };
+    ctx.setPipe(pipe);
   };
 
   const paintBatch = (compiled, model) => {
     paintBatchStatic(compiled, model);
     const key = currentBatchKey();
-    if (state.batch && state.batchKey === key) paintBatchResult();
-    else if (state.batchError && state.failedKey === key) {
+    if (state.batch && state.batchKey === key) {
+      if (state.painted && state.painted.batch === state.batch && state.painted.key === key) ctx.setPipe(state.painted.pipe);
+      else paintBatchResult();
+    } else if (state.batchError && state.failedKey === key) {
       state.batchRunning = false;
       paintProgress();
       paintBatchResult();

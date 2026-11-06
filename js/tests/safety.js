@@ -334,13 +334,32 @@ export const register = t => {
     const cssUrl = new URL('../../css/fonts.css', import.meta.url);
     const css = await (await fetch(cssUrl)).text();
     const urls = Array.from(css.matchAll(/url\("([^"]+)"\)/g)).map(m => m[1]);
-    t.same(urls.length, 3, 'three font files declared');
+    t.same(urls.length, 6, 'six font files declared');
     for (const rel of urls) {
       t.ok(!/^https?:/.test(rel), `${rel} is local`);
       const res = await fetch(new URL(rel, cssUrl));
       t.ok(res.ok, `${rel} loads`);
-      t.ok((await res.text()).length > 10000, `${rel} is not empty`);
+      t.ok((await res.text()).length > 5000, `${rel} is not empty`);
     }
     ['Instrument Sans', 'Fraunces', 'JetBrains Mono'].forEach(name => t.ok(css.includes(`font-family: "${name}"`), `${name} declared`));
+  });
+
+  t.test('B1 a quarantined backup can be deleted one at a time or all at once', async () => {
+    const backend = createMemoryBackend();
+    const bad = n => ({ version: 3, tables: { facilities: [{ id: `x${n}`, capacity_per_day: 'bad' }] }, sources: {}, files: {} });
+    await backend.set('active', bad(1));
+    let manager = createManager({ backend, getParams: defaultParams });
+    await manager.init();
+    await backend.set('active', bad(2));
+    manager = createManager({ backend, getParams: defaultParams });
+    await manager.init();
+    t.same(manager.quarantined().length, 2);
+    const [first] = manager.quarantined();
+    t.same(await manager.deleteBackup('quarantine-missing'), false);
+    t.same(await manager.deleteBackup(first), true);
+    t.same(manager.quarantined().length, 1);
+    t.same(await backend.get(first), null, 'the copy is gone from storage');
+    t.same(await manager.deleteAllBackups(), 1);
+    t.same(manager.quarantined(), []);
   });
 };

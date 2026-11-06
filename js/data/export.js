@@ -17,7 +17,7 @@ const gatesText = excluded => Object.keys(excluded || {}).map(g => `${g} ${exclu
 
 export const batchCsv = batch => {
   const header = ['patient_id', 'name', 'urgency', 'plan', 'ttc_days', 'travel_km', 'wait_days', 'cost', 'score', 'margin']
-    .concat(SCORE_KEYS.map(k => `s_${k}`), SCORE_KEYS.map(k => `p_${k}`), ['gates_failed', 'blocked_needs', 'reason']);
+    .concat(SCORE_KEYS.map(k => `s_${k}`), SCORE_KEYS.map(k => `p_${k}`), ['gates_failed', 'blocked_needs', 'requested_site', 'override_outcome', 'override_copay', 'reason']);
   const rows = batch.results.map(r => {
     const s = r.summary;
     const subs = SCORE_KEYS.map(k => (r.s ? round(r.s[k]) : ''));
@@ -26,7 +26,8 @@ export const batchCsv = batch => {
       r.id, r.name, URGENCY_NAMES[r.urgency], r.stops.map(stop => stop.id).join('→'),
       s ? round(s.ttc) : '', s ? round(s.km, 1) : '', s ? round(s.wait) : '', s ? round(s.cost, 2) : '',
       s ? round(s.score) : '', r.margin === null || r.margin === undefined ? '' : round(r.margin),
-      ...subs, ...parts, gatesText(r.excluded), r.blocked && r.blocked.needs ? r.blocked.needs.join(' ') : '', r.reason
+      ...subs, ...parts, gatesText(r.excluded), r.blocked && r.blocked.needs ? r.blocked.needs.join(' ') : '',
+      r.override ? r.override.requested : '', r.override ? r.override.outcome : '', r.override ? round(r.override.copay, 2) : '', r.reason
     ];
   });
   return csvText([header, ...rows], { bom: true });

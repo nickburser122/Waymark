@@ -1187,7 +1187,7 @@ td.warn::after {
   scroll-margin-top: 16px;
 }
 
-.eqblock h4 {
+.eqblock h3 {
   font: 400 18px var(--font-head);
   display: flex;
   gap: 10px;
@@ -1195,7 +1195,7 @@ td.warn::after {
   flex-wrap: wrap;
 }
 
-.eqblock h4 span {
+.eqblock h3 span {
   font: 600 11.5px var(--font-ui);
   color: var(--mu);
   letter-spacing: 0.06em;
@@ -1543,7 +1543,7 @@ td.m {
   font-size: 11px;
   font-weight: 600;
   background: var(--paper2);
-  color: var(--mu);
+  color: var(--ink);
 }
 
 .rchip.k-covers {
@@ -1645,7 +1645,7 @@ td.m {
   top: 0;
   bottom: 0;
   font-size: 11px;
-  color: var(--ink);
+  color: #1f1d24;
   padding: 2px 6px;
   white-space: nowrap;
   overflow: hidden;
@@ -1774,7 +1774,7 @@ td.m {
   gap: 14px;
 }
 
-.curve-card h5 {
+.curve-card h4 {
   margin: 0 0 4px;
   font-size: 13px;
 }
@@ -1808,4 +1808,14 @@ td.m {
 .fnode .selring,
 .fnode .body {
   transition: opacity 0.2s;
+}
+
+.res-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.mark-btn {
+  margin-left: 8px;
 }

@@ -1,4 +1,4 @@
-id,name,x,y,needs,urgency,previous_site
-P001,Ada,12,16,cardio lab,routine,sag
-P002,Priya,14,38,mater lab,routine,
-P003,Mateo,82,44,dialysis,soon,lcu
+id,name,x,y,needs,urgency,previous_site,requested_site
+P001,Ada,12,16,cardio lab,routine,sag,ntg
+P002,Priya,14,38,mater lab,routine,,ntg
+P003,Mateo,82,44,dialysis,soon,lcu,

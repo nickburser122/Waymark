@@ -1,5 +1,6 @@
 import { SCORE_KEYS, normaliseWeights } from './score.js';
-import { evalCell, preparePatient, planSplit, planSplitNearest, summarisePlan, partsOf, rankRows, confidenceLabel } from './route.js';
+import { judgeOverride } from './override.js';
+import { evalCell, routePatient, preparePatient, planSplit, planSplitNearest, summarisePlan, partsOf, rankRows, confidenceLabel } from './route.js';
 import { compareText } from './stats.js';
 
 const GATE_NAMES = ['covers', 'load', 'reach', 'deadline', 'capacity'];
@@ -336,6 +337,26 @@ export const routeBatch = (model, patients, options = {}) => {
     ordered.forEach(placeDeferred);
   });
 
+  const overrideOf = pp => {
+    const requested = pp.source.requested;
+    if (!requested || !model.facilities.some(f => f.id === requested)) return null;
+    const own = new Map();
+    resultById.get(pp.id).stops.forEach(stop => own.set(stop.id, (own.get(stop.id) || 0) + 1));
+    const others = {};
+    model.facilities.forEach((f, fi) => { others[f.id] = Math.max(0, assigned[fi] - (own.get(f.id) || 0)); });
+    const result = routePatient(model, pp.source, { capacityGate: true, assigned: others, prepared: pp });
+    const judgement = judgeOverride(model, result, requested, { tokenUsed: false });
+    return judgement ? { requested, outcome: judgement.outcome, copay: judgement.copay } : null;
+  };
+  const overrides = { total: 0, same: 0, approved: 0, copay: 0, signoff: 0, waitlist: 0, denied: 0, copayTotal: 0 };
+  prepared.forEach(pp => {
+    const found = overrideOf(pp);
+    if (!found) return;
+    resultById.get(pp.id).override = found;
+    overrides.total += 1;
+    overrides[found.outcome] += 1;
+    overrides.copayTotal += found.copay;
+  });
   const results = prepared.map(pp => resultById.get(pp.id));
   const baselineAssigned = new Float64Array(count);
   const baselineById = new Map();
@@ -381,7 +402,7 @@ export const routeBatch = (model, patients, options = {}) => {
     results,
     sequence: sequence.map(pp => pp.id),
     loads,
-    summary: aggregate(model, results, assigned),
+    summary: { ...aggregate(model, results, assigned), overrides },
     baseline: { results: baselineResults, summary: aggregate(model, baselineResults, baselineAssigned) }
   };
 };
@@ -412,6 +433,7 @@ const slimResult = (model, r) => ({
   s: r.s || null,
   summary: r.summary,
   blocked: r.blocked || null,
+  override: r.override || null,
   stops: r.stops.map(stop => slimStop(model, stop))
 });
 
