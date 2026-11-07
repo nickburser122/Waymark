@@ -297,7 +297,7 @@ export const createRouteView = ctx => {
 
   const term = name => h('abbr', { class: 'term', tabindex: '0', 'data-tip': GLOSSARY[name], text: name });
 
-  const hoverTip = (result, model, id) => {
+  const hoverTip = (result, model, id, note) => {
     const row = result.rows.find(r => r.id === id);
     if (!row) return '';
     const f = row.facility;
@@ -308,7 +308,7 @@ export const createRouteView = ctx => {
     }).join(', ');
     const ranked = result.ranked.find(r => r.id === id);
     const verdict = row.G ? (ranked ? `score ${ranked.total.toFixed(2)}` : 'held back by the lock') : `Ruled out: ${gateReasons(model, result.pp, row).join('; ')}`;
-    return [f.name, f.tier, `${Number.isFinite(row.km) ? Math.round(row.km) : '—'} km`, `services ${services}`, `${Math.round(Math.min(row.load, 9.99) * 100)}% booked`, `price ×${f.multiplier}`, `quality ${f.shrunk.toFixed(2)}`, Number.isFinite(row.wait) ? `wait ${row.wait.toFixed(1)} d` : '', verdict].filter(Boolean).join(' · ');
+    return [f.name, f.tier, `${Number.isFinite(row.km) ? Math.round(row.km) : '—'} km`, `services ${services}`, `${Math.round(Math.min(row.load, 9.99) * 100)}% booked`, `price ×${f.multiplier}`, `quality ${f.shrunk.toFixed(2)}`, Number.isFinite(row.wait) ? `wait ${row.wait.toFixed(1)} d` : '', result.pp.previous === id ? 'known here' : '', note || '', verdict].filter(Boolean).join(' · ');
   };
 
   const mapFacilities = (model, data) => model.facilities.map(f => ({
@@ -523,7 +523,7 @@ export const createRouteView = ctx => {
     const dim = new Set(result.rows.filter(r => !r.G).map(r => r.id));
     map.render({
       decorative: !geo && looksLikeSample(manager.records('facilities').map(r => ({ id: r.id, x: Number(r.x), y: Number(r.y) }))),
-      mode: geo ? 'geo' : 'xy', facilities: mapFacilities(model).map(f => ({ ...f, tip: hoverTip(result, model, f.id) })), patient: p, reachKm: model.cfg.reach[p.urgency], eta: model.cfg.eta,
+      mode: geo ? 'geo' : 'xy', facilities: mapFacilities(model).map(f => ({ ...f, tip: hoverTip(result, model, f.id, f.note) })), patient: p, reachKm: model.cfg.reach[p.urgency], eta: model.cfg.eta,
       best: bestIds, stops: bestIds, requested: state.requested, dim, previous: p.previous, patientText: geo ? `${p.lat}, ${p.lon}` : `${p.x}, ${p.y} km`
     });
 

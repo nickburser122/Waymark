@@ -1189,6 +1189,7 @@ td.warn::after {
 
 .eqblock h3 {
   font: 400 18px var(--font-head);
+  letter-spacing: normal;
   display: flex;
   gap: 10px;
   align-items: baseline;
@@ -1818,4 +1819,16 @@ td.m {
 
 .mark-btn {
   margin-left: 8px;
+}
+
+
+.flip-strip,
+.gap-track,
+.stackbar,
+.mini {
+  contain: layout paint style;
+}
+
+.why li {
+  contain: layout style;
 }

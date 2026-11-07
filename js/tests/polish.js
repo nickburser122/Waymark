@@ -57,6 +57,7 @@ export const register = t => {
       const tips = Array.from(view.el.querySelectorAll('.fnode')).map(el => el.getAttribute('data-tip'));
       t.ok(tips.length > 2 && tips.every(tip => tip.includes('services') && tip.includes('% booked')), 'hover cards carry detail');
       t.ok(tips.some(tip => tip.includes('Ruled out') || tip.includes('score')), 'verdict present');
+      t.ok(tips.some(tip => tip.includes('known here')), 'the previous site is still marked in the hover card');
       const worked = Array.from(view.el.querySelectorAll('h3')).find(el => el.textContent.startsWith('Worked equation'));
       t.ok(worked, 'worked equation card');
       const text = worked.parentElement.querySelector('pre').textContent;

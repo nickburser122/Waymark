@@ -622,14 +622,20 @@ export const Toast = () => {
 
 const SCROLL_HOSTS = '.table-scroll, .table-wrap, .adv-list, .grid-scroll, .results-wrap';
 
+const FOCUS_TARGETS = 'a[href], button, [tabindex], input, select, textarea, [role=slider], [role=checkbox]';
+
+const focusLabel = el => el.getAttribute('aria-label') || el.getAttribute('data-id') || el.getAttribute('data-v') || el.id || (el.textContent || '').trim().slice(0, 60);
+
+const sameKind = (host, tag) => Array.from(host.querySelectorAll(FOCUS_TARGETS)).filter(x => x.tagName === tag);
+
 const focusKey = (el, host) => {
-  const label = el.getAttribute('aria-label') || el.getAttribute('data-id') || el.getAttribute('data-v') || el.id || (el.textContent || '').trim().slice(0, 60);
-  const same = Array.from(host.querySelectorAll(el.tagName)).filter(x => (x.getAttribute('aria-label') || x.getAttribute('data-id') || x.getAttribute('data-v') || x.id || (x.textContent || '').trim().slice(0, 60)) === label);
+  const label = focusLabel(el);
+  const same = sameKind(host, el.tagName).filter(x => focusLabel(x) === label);
   return { tag: el.tagName, label, nth: Math.max(0, same.indexOf(el)) };
 };
 
 const findKey = (host, key) => {
-  const same = Array.from(host.querySelectorAll(key.tag)).filter(x => (x.getAttribute('aria-label') || x.getAttribute('data-id') || x.getAttribute('data-v') || x.id || (x.textContent || '').trim().slice(0, 60)) === key.label);
+  const same = sameKind(host, key.tag).filter(x => focusLabel(x) === key.label);
   return same[key.nth] || same[same.length - 1] || null;
 };
 
@@ -650,8 +656,8 @@ const tweenWidths = (host, before) => {
   host.querySelectorAll('[data-tw]').forEach(el => {
     const from = before.get(el.getAttribute('data-tw'));
     const to = parseFloat(el.style.width);
-    if (from === undefined || !Number.isFinite(to) || Math.abs(from - to) < 0.2) return;
-    el.animate([{ width: `${from}%` }, { width: `${to}%` }], { duration: TWEEN_MS, easing: 'ease-out' });
+    if (from === undefined || !Number.isFinite(to) || to <= 0.2 || Math.abs(from - to) < 0.2) return;
+    el.animate([{ transform: `scaleX(${to > 0 ? from / to : 0})`, transformOrigin: 'left center' }, { transform: 'scaleX(1)', transformOrigin: 'left center' }], { duration: TWEEN_MS, easing: 'ease-out' });
   });
 };
 

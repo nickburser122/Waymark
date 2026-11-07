@@ -186,7 +186,7 @@ export const register = t => {
       keepState(host, () => host.replaceChildren(bar('a', 40), bar('b', 50), bar('d', 20)));
       t.same(calls.length, 1, 'only the changed bar animates');
       t.same(calls[0].key, 'a');
-      t.same(calls[0].frames, [{ width: '10%' }, { width: '40%' }]);
+      t.same(calls[0].frames.map(f => f.transform), ['scaleX(0.25)', 'scaleX(1)']);
       t.ok(calls[0].options.duration > 0);
       window.matchMedia = () => ({ matches: true });
       keepState(host, () => host.replaceChildren(bar('a', 90), bar('b', 5), bar('d', 20)));
